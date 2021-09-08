@@ -1,0 +1,3 @@
+BOT_USERNAME=<your_bot_username>
+CHANNEL_NAME=<your_channel_name>
+OAUTH_TOKEN=<your_oauth_token>
