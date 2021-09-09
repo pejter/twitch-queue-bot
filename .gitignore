@@ -17,3 +17,6 @@ Cargo.lock
 # Configs and credentials
 
 config.txt
+
+# IDE files
+.vscode/

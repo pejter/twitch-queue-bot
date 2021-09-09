@@ -62,11 +62,23 @@ macro_rules! color {
 }
 
 #[macro_export]
-macro_rules! colorprintln {
+macro_rules! colorln {
     ($color : expr, $text:expr) => {{
-        std::io::_print(color!($color,$text))
+        let code = crate::termcolor::get_code(&$color);
+        format_args!("\u{001b}[{}{}\u{001b}[0m\n",code.to_owned(),$text)
     }};
     ($color : expr, $fmt:expr, $($args : tt) *) => {{
-        std::io::_print(color!($color , $fmt, $($args)*))
+        let code = crate::termcolor::get_code(&$color);
+        format_args!("\u{001b}[{}{}\u{001b}[0m\n",code.to_owned(),format_args!($fmt, $($args)*))
+    }};
+}
+
+#[macro_export]
+macro_rules! colorprintln {
+    ($color : expr, $text:expr) => {{
+        std::io::_print(colorln!($color,$text))
+    }};
+    ($color : expr, $fmt:expr, $($args : tt) *) => {{
+        std::io::_print(colorln!($color , $fmt, $($args)*))
     }};
 }

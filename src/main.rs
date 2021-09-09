@@ -4,7 +4,7 @@ mod config;
 mod lib;
 mod termcolor;
 
-use lib::Bot;
+use lib::{Bot, ChatConfig};
 use std::io::{self, BufRead};
 use std::{thread, time};
 
@@ -30,7 +30,7 @@ fn clear(bot: &mut Bot) {
 fn push(bot: &mut Bot, user: &str) {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => {
-            bot.send_msg(&format!(
+            bot.chat.send_msg(&format!(
                 "@{}: You're already in queue at position {}",
                 user,
                 idx + 1
@@ -38,7 +38,7 @@ fn push(bot: &mut Bot, user: &str) {
         }
         None => {
             bot.queue.push(user.to_owned());
-            bot.send_msg(&format!(
+            bot.chat.send_msg(&format!(
                 "@{}: You've been added to queue at position {}",
                 user,
                 bot.queue.len()
@@ -51,10 +51,12 @@ fn remove(bot: &mut Bot, user: &str) {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => {
             bot.queue.remove(idx);
-            bot.send_msg(&format!("@{}: You've been removed from the queue", user));
+            bot.chat
+                .send_msg(&format!("@{}: You've been removed from the queue", user));
         }
         None => {
-            bot.send_msg(&format!("@{}: You were not queued", user));
+            bot.chat
+                .send_msg(&format!("@{}: You were not queued", user));
         }
     }
 }
@@ -62,10 +64,12 @@ fn remove(bot: &mut Bot, user: &str) {
 fn find(bot: &mut Bot, user: &str) {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => {
-            bot.send_msg(&format!("@{} you are number {} in queue", user, idx + 1));
+            bot.chat
+                .send_msg(&format!("@{} you are number {} in queue", user, idx + 1));
         }
         None => {
-            bot.send_msg(&format!("@{}: You're not currently queued", user));
+            bot.chat
+                .send_msg(&format!("@{}: You're not currently queued", user));
         }
     }
 }
@@ -74,22 +78,24 @@ fn shift(bot: &mut Bot) {
     let queue = &bot.queue;
     match queue.first() {
         Some(user) => {
-            bot.send_msg(&format!("Next person in queue: @{}", user));
+            bot.chat
+                .send_msg(&format!("Next person in queue: @{}", user));
         }
         None => {
-            bot.send_msg("The queue is currently empty");
+            bot.chat.send_msg("The queue is currently empty");
         }
     }
 }
 
 fn length(bot: &mut Bot) {
     {
-        bot.send_msg(&format!("There are {} people in queue", bot.queue.len()));
+        bot.chat
+            .send_msg(&format!("There are {} people in queue", bot.queue.len()));
     }
 }
 
 fn handle_command(bot: &mut Bot, user: &str, msg: &str) {
-    let modlist = &bot.modlist;
+    let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => push(bot, user),
         "!leave" => remove(bot, user),
@@ -110,13 +116,8 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) {
 }
 fn message_handler(bot: &mut Bot, msg: String) {
     match msg.as_str() {
-        "PING :tmi.twitch.tv" => bot.send_raw("PONG :tmi.twitch.tv"),
+        "PING :tmi.twitch.tv" => bot.chat.send_raw("PONG :tmi.twitch.tv"),
         line if line.contains("PRIVMSG") => {
-            // DEBUG
-            for x in 1..101 {
-                bot.send_msg(&format!("{}", x));
-            }
-            // END DEBUG
             let user = {
                 let idx = line.find('!').unwrap();
                 &line[1..idx]
@@ -131,10 +132,11 @@ fn message_handler(bot: &mut Bot, msg: String) {
             let prefix = "The moderators of this channel are: ";
             if let Some(idx) = line.find(prefix) {
                 let modlist = line[idx + prefix.len()..].split(", ");
-                bot.set_modlist(modlist);
-                println!("Mods: {:#?}", bot.modlist)
+                bot.chat.set_modlist(modlist);
+                println!("Mods: {:#?}", bot.chat.modlist)
             }
         }
+        line if line.contains("USERSTATE") => {}
 
         _ => {
             println!("Received: {}", msg)
@@ -151,42 +153,29 @@ fn main() {
         .expect("BOT_USERNAME must be present in the config");
     let channel_name = config
         .get("CHANNEL_NAME")
-        .expect("CHANNEL_NAME must be present in the config")
-        .to_string();
+        .expect("CHANNEL_NAME must be present in the config");
 
-    let mut bot = Bot::new(&channel_name);
+    let mut bot = Bot::new(ChatConfig {
+        oauth_token: oauth_token.to_owned(),
+        bot_username: bot_username.to_owned(),
+        channel_name: channel_name.to_owned(),
+    })
+    .unwrap();
+
     loop {
-        bot.connect();
-        bot.send_raw(&format!("PASS {}", oauth_token));
-        bot.send_raw(&format!("NICK {}", bot_username));
-        bot.send_raw(&format!("JOIN #{}", channel_name));
-        bot.send_raw("CAP REQ :twitch.tv/commands");
-        bot.send_msg("/mods");
-
-        for result in bot.get_reader().lines() {
+        let reader = bot.chat.get_reader().expect("Getting chat reader failed");
+        for result in reader.lines() {
             match result {
                 Ok(line) => message_handler(&mut bot, line),
-                Err(e) => match e.kind() {
-                    io::ErrorKind::ConnectionReset => {
-                        let duration = time::Duration::from_secs(10);
-                        colorprintln!(
-                            Color::Blue,
-                            "Connection reset, sleeping {}s ...",
-                            duration.as_secs()
-                        );
-                        thread::sleep(duration);
-                    }
-                    _ => {
-                        colorprintln!(Color::BgRed, "Error while reading from socket: {}", e);
-                        match bot.disconnect() {
-                            Ok(_) => colorprintln!(Color::Red, "Disconnected"),
-                            Err(e) => {
-                                colorprintln!(Color::Green, "Error while disconnecting: {}", e)
-                            }
-                        }
-                    }
-                },
+                Err(error) => {
+                    colorprintln!(Color::Red, "Error while reading from socket: {}", error);
+                }
             }
         }
+        let duration = time::Duration::from_secs(25);
+        colorprintln!(Color::Red, "Unexpected EOF, sleeping {:?}...", duration);
+        thread::sleep(duration);
+        colorprintln!(Color::Blue, "Reconnecting");
+        bot.reconnect().unwrap();
     }
 }
