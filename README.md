@@ -22,5 +22,5 @@ TODO
 -----
 
 - [ ] Persistence
-- [x] Multiple queues
+- [ ] Multiple queues
 - [ ] Manual opening/closing

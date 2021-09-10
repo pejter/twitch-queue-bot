@@ -35,7 +35,7 @@ impl ChatClient {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
         let mut socket_recv = socket.try_clone()?;
         let (sender, receiver) = channel();
-        let capacity = 20;
+        let capacity = 80;
 
         std::thread::spawn(move || {
             let mut limiter = ratelimit::Limiter::new(capacity, Duration::from_secs(30));
