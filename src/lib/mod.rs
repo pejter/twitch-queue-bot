@@ -1,9 +1,15 @@
+mod ratelimit;
+
 use std::collections::HashSet;
 use std::error::Error;
 use std::io;
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, SendError, Sender};
+use std::time::Duration;
+
+pub type ChannelContent = String;
+pub type ChannelError = SendError<ChannelContent>;
 
 #[derive(Clone)]
 pub struct ChatConfig {
@@ -15,7 +21,7 @@ pub struct ChatConfig {
 pub struct ChatClient {
     config: ChatConfig,
     socket: TcpStream,
-    sender: Sender<String>,
+    sender: Sender<ChannelContent>,
     pub modlist: HashSet<String>,
 }
 
@@ -29,6 +35,20 @@ impl ChatClient {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
         let mut socket_recv = socket.try_clone()?;
         let (sender, receiver) = channel();
+        let capacity = 20;
+
+        std::thread::spawn(move || {
+            let mut limiter = ratelimit::Limiter::new(capacity, Duration::from_secs(30));
+
+            for msg in receiver.iter() {
+                limiter.take();
+                println!("Sending: {}", msg);
+                socket_recv
+                    .write_all(format!("{}\r\n", msg).as_bytes())
+                    .expect("Sending message failed");
+            }
+        });
+
         let mut client = Self {
             socket,
             config,
@@ -36,13 +56,6 @@ impl ChatClient {
             modlist: HashSet::new(),
         };
 
-        std::thread::spawn(move || loop {
-            let msg = receiver.recv().unwrap();
-            println!("Sending: {}", msg);
-            socket_recv
-                .write_all(format!("{}\r\n", msg).as_bytes())
-                .expect("Sending message failed");
-        });
         client.send_raw(&format!("PASS {}", client.config.oauth_token))?;
         client.send_raw(&format!("NICK {}", client.config.bot_username))?;
         client.send_raw(&format!("JOIN #{}", client.config.channel_name))?;
@@ -55,12 +68,13 @@ impl ChatClient {
         }
     }
 
-    pub fn send_raw(&mut self, msg: &str) -> Result<(), SendError<String>> {
-        self.sender.send(msg.to_string())
+    pub fn send_raw(&mut self, msg: &str) -> io::Result<()> {
+        self.socket.write_all(format!("{}\r\n", msg).as_bytes())
     }
 
-    pub fn send_msg(&mut self, msg: &str) -> Result<(), SendError<String>> {
-        self.send_raw(&format!("PRIVMSG #{} :{}", self.config.channel_name, msg))
+    pub fn send_msg(&mut self, msg: &str) -> Result<(), SendError<ChannelContent>> {
+        self.sender
+            .send(format!("PRIVMSG #{} :{}", self.config.channel_name, msg))
     }
 
     pub fn get_reader(&self) -> io::Result<io::BufReader<TcpStream>> {

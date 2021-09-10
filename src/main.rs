@@ -4,9 +4,8 @@ mod config;
 mod lib;
 mod termcolor;
 
-use lib::{Bot, ChatConfig};
+use lib::{Bot, ChannelError, ChatConfig};
 use std::io::BufRead;
-use std::sync::mpsc::SendError;
 use std::{thread, time};
 
 use termcolor::Color;
@@ -23,12 +22,12 @@ macro_rules! mod_command {
     };
 }
 
-fn clear(bot: &mut Bot) -> Result<(), SendError<String>> {
+fn clear(bot: &mut Bot) -> Result<(), ChannelError> {
     bot.queue.clear();
     bot.chat.send_msg("Queue has been cleared")
 }
 
-fn push(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
+fn push(bot: &mut Bot, user: &str) -> Result<(), ChannelError> {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => bot.chat.send_msg(&format!(
             "@{}: You're already in queue at position {}",
@@ -46,7 +45,7 @@ fn push(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
     }
 }
 
-fn remove(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
+fn remove(bot: &mut Bot, user: &str) -> Result<(), ChannelError> {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => {
             bot.queue.remove(idx);
@@ -60,7 +59,7 @@ fn remove(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
     }
 }
 
-fn find(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
+fn find(bot: &mut Bot, user: &str) -> Result<(), ChannelError> {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => bot
             .chat
@@ -71,7 +70,7 @@ fn find(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
     }
 }
 
-fn shift(bot: &mut Bot) -> Result<(), SendError<String>> {
+fn shift(bot: &mut Bot) -> Result<(), ChannelError> {
     let queue = &bot.queue;
     match queue.first() {
         Some(user) => bot
@@ -81,12 +80,12 @@ fn shift(bot: &mut Bot) -> Result<(), SendError<String>> {
     }
 }
 
-fn length(bot: &mut Bot) -> Result<(), SendError<String>> {
+fn length(bot: &mut Bot) -> Result<(), ChannelError> {
     bot.chat
         .send_msg(&format!("There are {} people in queue", bot.queue.len()))
 }
 
-fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> Result<(), SendError<String>> {
+fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> Result<(), ChannelError> {
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => push(bot, user),
@@ -136,6 +135,7 @@ fn message_handler(bot: &mut Bot, msg: String) {
     }
 }
 fn main() {
+    colorprintln!(Color::Blue, "Reading config");
     let config = config::read().unwrap();
     let oauth_token = config
         .get("OAUTH_TOKEN")
@@ -147,6 +147,7 @@ fn main() {
         .get("CHANNEL_NAME")
         .expect("CHANNEL_NAME must be present in the config");
 
+    colorprintln!(Color::Blue, "Creating bot");
     let mut bot = Bot::new(ChatConfig {
         oauth_token: oauth_token.to_owned(),
         bot_username: bot_username.to_owned(),
