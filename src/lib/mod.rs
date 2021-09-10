@@ -11,6 +11,8 @@ use std::time::Duration;
 pub type ChannelContent = String;
 pub type ChannelError = SendError<ChannelContent>;
 
+const MOD_RATE_LIMIT: usize = 100;
+
 #[derive(Clone)]
 pub struct ChatConfig {
     pub oauth_token: String,
@@ -35,13 +37,12 @@ impl ChatClient {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
         let mut socket_recv = socket.try_clone()?;
         let (sender, receiver) = channel();
-        let capacity = 80;
 
         std::thread::spawn(move || {
-            let mut limiter = ratelimit::Limiter::new(capacity, Duration::from_secs(30));
+            let mut limiter = ratelimit::Limiter::new(MOD_RATE_LIMIT, Duration::from_secs(30));
 
             for msg in receiver.iter() {
-                limiter.take();
+                limiter.wait();
                 println!("Sending: {}", msg);
                 socket_recv
                     .write_all(format!("{}\r\n", msg).as_bytes())

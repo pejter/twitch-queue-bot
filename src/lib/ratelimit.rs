@@ -1,59 +1,49 @@
+use std::collections::VecDeque;
 use std::ops::Add;
 use std::time::{Duration, Instant};
 
 pub struct Limiter {
     interval: Duration,
-    tokens: u64,
-    capacity: u64,
-    last: Option<Instant>,
+    tokens: usize,
+    window: VecDeque<Instant>,
 }
 
 impl Limiter {
-    pub fn new(capacity: u64, interval: Duration) -> Self {
+    pub fn new(capacity: usize, interval: Duration) -> Self {
         if capacity == 0 {
             panic!("Capacity can't be zero!")
         }
         Self {
             interval,
-            capacity,
             tokens: capacity,
-            last: None,
+            window: VecDeque::new(),
         }
     }
 
     pub fn refill(&mut self) {
-        if let Some(last) = self.last {
-            let since = Instant::now().saturating_duration_since(last);
-            if since > self.interval {
-                self.tokens = self.capacity;
-                self.last = None;
-            }
-        }
-    }
-
-    fn start_timeout(&mut self) {
-        if self.last == None {
-            self.last = Some(Instant::now());
-        }
-    }
-
-    pub fn wait(&self) {
-        if let Some(last) = self.last {
-            let until_next = last
-                .add(self.interval)
-                .saturating_duration_since(Instant::now());
-            std::thread::sleep(until_next)
-        }
+        let now = Instant::now();
+        let num_expired = self.window.partition_point(|&i| i < now);
+        self.window = self.window.split_off(num_expired);
+        self.tokens += num_expired;
     }
 
     pub fn take(&mut self) {
+        self.window.push_back(Instant::now().add(self.interval));
+        self.tokens -= 1
+    }
+
+    pub fn wait(&mut self) {
         loop {
             self.refill();
-            self.start_timeout();
             if self.tokens == 0 {
-                self.wait();
+                let wait_time = match self.window.get(0) {
+                    Some(future) => future.saturating_duration_since(Instant::now()),
+                    None => Duration::from_millis(100), // This should never happen
+                };
+                std::thread::sleep(wait_time);
             } else {
-                return self.tokens -= 1;
+                self.take();
+                return;
             }
         }
     }
