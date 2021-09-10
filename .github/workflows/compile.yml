@@ -1,26 +1,33 @@
 on: [push, pull_request]
 
-name: Cross-compile
+name: Compile
 
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
     strategy:
       matrix:
-        target:
-          - x86_64-pc-windows-gnu
-          - x86_64-unknown-linux-gnu
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
 
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
+
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
-          target: ${{ matrix.target }}
           override: true
+
       - uses: actions-rs/cargo@v1
         with:
-          use-cross: true
           command: build
-          args: --release --target=${{ matrix.target }}
+          args: --release
+
+      - name: Archive binaries
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}
+          path: target/release/
