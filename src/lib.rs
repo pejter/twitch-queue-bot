@@ -1,7 +1,9 @@
 use std::collections::HashSet;
+use std::error::Error;
 use std::io;
 use std::io::prelude::*;
-use std::net::{Shutdown, TcpStream};
+use std::net::TcpStream;
+use std::sync::mpsc::{channel, SendError, Sender};
 
 #[derive(Clone)]
 pub struct ChatConfig {
@@ -12,7 +14,8 @@ pub struct ChatConfig {
 
 pub struct ChatClient {
     config: ChatConfig,
-    pub socket: TcpStream,
+    socket: TcpStream,
+    sender: Sender<String>,
     pub modlist: HashSet<String>,
 }
 
@@ -22,46 +25,42 @@ pub struct Bot {
 }
 
 impl ChatClient {
-    pub fn connect(config: ChatConfig) -> io::Result<Self> {
+    pub fn connect(config: ChatConfig) -> Result<Self, Box<dyn Error>> {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
-
+        let mut socket_recv = socket.try_clone()?;
+        let (sender, receiver) = channel();
         let mut client = Self {
             socket,
             config,
+            sender,
             modlist: HashSet::new(),
         };
 
-        client.send_raw(&format!("PASS {}", client.config.oauth_token));
-        client.send_raw(&format!("NICK {}", client.config.bot_username));
-        client.send_raw(&format!("JOIN #{}", client.config.channel_name));
-        client.send_raw("CAP REQ :twitch.tv/commands");
-        client.send_msg("/mods");
+        std::thread::spawn(move || loop {
+            let msg = receiver.recv().unwrap();
+            println!("Sending: {}", msg);
+            socket_recv
+                .write_all(format!("{}\r\n", msg).as_bytes())
+                .expect("Sending message failed");
+        });
+        client.send_raw(&format!("PASS {}", client.config.oauth_token))?;
+        client.send_raw(&format!("NICK {}", client.config.bot_username))?;
+        client.send_raw(&format!("JOIN #{}", client.config.channel_name))?;
+        client.send_raw("CAP REQ :twitch.tv/commands")?;
+        client.send_msg("/mods")?;
 
         match client.socket.take_error()? {
-            Some(error) => {
-                println!("{}", error);
-            }
-            None => {
-                println!("No error");
-            }
+            Some(error) => Err(Box::new(error)),
+            None => Ok(client),
         }
-
-        Ok(client)
     }
 
-    pub fn disconnect(&mut self) -> io::Result<()> {
-        self.socket.shutdown(Shutdown::Both)
+    pub fn send_raw(&mut self, msg: &str) -> Result<(), SendError<String>> {
+        self.sender.send(msg.to_string())
     }
 
-    pub fn send_raw(&mut self, msg: &str) {
-        println!("Sending: {}", msg);
-        self.socket
-            .write_all(format!("{}\r\n", msg).as_bytes())
-            .expect("Sending message failed");
-    }
-
-    pub fn send_msg(&mut self, msg: &str) {
-        self.send_raw(&format!("PRIVMSG #{} :{}", self.config.channel_name, msg));
+    pub fn send_msg(&mut self, msg: &str) -> Result<(), SendError<String>> {
+        self.send_raw(&format!("PRIVMSG #{} :{}", self.config.channel_name, msg))
     }
 
     pub fn get_reader(&self) -> io::Result<io::BufReader<TcpStream>> {
@@ -75,14 +74,15 @@ impl ChatClient {
         self.modlist.extend(modlist.map(|s| s.to_owned()));
     }
 }
+
 impl Bot {
-    pub fn new(config: ChatConfig) -> io::Result<Self> {
+    pub fn new(config: ChatConfig) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             chat: ChatClient::connect(config)?,
             queue: Vec::new(),
         })
     }
-    pub fn reconnect(&mut self) -> io::Result<()> {
+    pub fn reconnect(&mut self) -> Result<(), Box<dyn Error>> {
         let config = self.chat.config.clone();
         self.chat = ChatClient::connect(config)?;
         Ok(())

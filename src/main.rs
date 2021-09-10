@@ -5,11 +5,11 @@ mod lib;
 mod termcolor;
 
 use lib::{Bot, ChatConfig};
-use std::io::{self, BufRead};
+use std::io::BufRead;
+use std::sync::mpsc::SendError;
 use std::{thread, time};
 
-#[macro_use]
-use termcolor::{Color};
+use termcolor::Color;
 
 macro_rules! mod_command {
     ($modlist:tt,$user:tt,$b:block) => {
@@ -17,84 +17,76 @@ macro_rules! mod_command {
             true => $b,
             false => {
                 println!("User {} not authorised to perform mod commands", $user);
+                Ok(())
             }
         }
     };
 }
 
-fn clear(bot: &mut Bot) {
+fn clear(bot: &mut Bot) -> Result<(), SendError<String>> {
     bot.queue.clear();
-    println!("Queue cleared");
+    bot.chat.send_msg("Queue has been cleared")
 }
 
-fn push(bot: &mut Bot, user: &str) {
+fn push(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
     match bot.queue.iter().position(|x| x == user) {
-        Some(idx) => {
-            bot.chat.send_msg(&format!(
-                "@{}: You're already in queue at position {}",
-                user,
-                idx + 1
-            ));
-        }
+        Some(idx) => bot.chat.send_msg(&format!(
+            "@{}: You're already in queue at position {}",
+            user,
+            idx + 1
+        )),
         None => {
             bot.queue.push(user.to_owned());
             bot.chat.send_msg(&format!(
                 "@{}: You've been added to queue at position {}",
                 user,
                 bot.queue.len()
-            ));
+            ))
         }
     }
 }
 
-fn remove(bot: &mut Bot, user: &str) {
+fn remove(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
     match bot.queue.iter().position(|x| x == user) {
         Some(idx) => {
             bot.queue.remove(idx);
-            bot.chat
-                .send_msg(&format!("@{}: You've been removed from the queue", user));
+            Ok(bot
+                .chat
+                .send_msg(&format!("@{}: You've been removed from the queue", user))?)
         }
-        None => {
-            bot.chat
-                .send_msg(&format!("@{}: You were not queued", user));
-        }
+        None => bot
+            .chat
+            .send_msg(&format!("@{}: You were not queued", user)),
     }
 }
 
-fn find(bot: &mut Bot, user: &str) {
+fn find(bot: &mut Bot, user: &str) -> Result<(), SendError<String>> {
     match bot.queue.iter().position(|x| x == user) {
-        Some(idx) => {
-            bot.chat
-                .send_msg(&format!("@{} you are number {} in queue", user, idx + 1));
-        }
-        None => {
-            bot.chat
-                .send_msg(&format!("@{}: You're not currently queued", user));
-        }
+        Some(idx) => bot
+            .chat
+            .send_msg(&format!("@{} you are number {} in queue", user, idx + 1)),
+        None => bot
+            .chat
+            .send_msg(&format!("@{}: You're not currently queued", user)),
     }
 }
 
-fn shift(bot: &mut Bot) {
+fn shift(bot: &mut Bot) -> Result<(), SendError<String>> {
     let queue = &bot.queue;
     match queue.first() {
-        Some(user) => {
-            bot.chat
-                .send_msg(&format!("Next person in queue: @{}", user));
-        }
-        None => {
-            bot.chat.send_msg("The queue is currently empty");
-        }
+        Some(user) => bot
+            .chat
+            .send_msg(&format!("Next person in queue: @{}", user)),
+        None => bot.chat.send_msg("The queue is currently empty"),
     }
 }
 
-fn length(bot: &mut Bot) {
-    {
-        bot.chat
-            .send_msg(&format!("There are {} people in queue", bot.queue.len()));
-    }
+fn length(bot: &mut Bot) -> Result<(), SendError<String>> {
+    bot.chat
+        .send_msg(&format!("There are {} people in queue", bot.queue.len()))
 }
 
-fn handle_command(bot: &mut Bot, user: &str, msg: &str) {
+fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> Result<(), SendError<String>> {
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => push(bot, user),
@@ -102,21 +94,21 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) {
         "!position" => find(bot, user),
         "!length" => length(bot),
         // Mod commands
-        "!next" => mod_command!(modlist, user, {
-            shift(bot);
-        }),
-        "!clear" => mod_command!(modlist, user, {
-            clear(bot);
-        }),
+        "!next" => mod_command!(modlist, user, { shift(bot) }),
+        "!clear" => mod_command!(modlist, user, { clear(bot) }),
         // Not a command
         default => {
-            println!("{}: {}", user, default)
+            println!("{}: {}", user, default);
+            Ok(())
         }
     }
 }
 fn message_handler(bot: &mut Bot, msg: String) {
     match msg.as_str() {
-        "PING :tmi.twitch.tv" => bot.chat.send_raw("PONG :tmi.twitch.tv"),
+        "PING :tmi.twitch.tv" => bot
+            .chat
+            .send_raw("PONG :tmi.twitch.tv")
+            .expect("Unable to respond to PING"),
         line if line.contains("PRIVMSG") => {
             let user = {
                 let idx = line.find('!').unwrap();
@@ -126,7 +118,7 @@ fn message_handler(bot: &mut Bot, msg: String) {
                 let idx = line[1..].find(':').unwrap();
                 &line[idx + 2..]
             };
-            handle_command(bot, user, msg);
+            handle_command(bot, user, msg).expect("Couldn't send message");
         }
         line if line.contains("NOTICE") => {
             let prefix = "The moderators of this channel are: ";
@@ -173,7 +165,11 @@ fn main() {
             }
         }
         let duration = time::Duration::from_secs(25);
-        colorprintln!(Color::Red, "Unexpected EOF, sleeping {:?}...", duration);
+        colorprintln!(
+            Color::Red,
+            "Unexpected EOF, reconnecting after {:?}...",
+            duration
+        );
         thread::sleep(duration);
         colorprintln!(Color::Blue, "Reconnecting");
         bot.reconnect().unwrap();
