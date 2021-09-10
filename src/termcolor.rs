@@ -54,33 +54,30 @@ pub fn get_code(color: &Color) -> &str {
 #[macro_export]
 macro_rules! color {
     ($color : expr, $text:expr) => {{
-        let code = crate::termcolor::get_code(&$color);
-        format_args!("\u{001b}[{}{}\u{001b}[0m",code.to_owned(),$text)
-    }};
-    ($color : expr, $fmt:expr, $($args : tt) *) => {{
-        let code = crate::termcolor::get_code(&$color);
-        format_args!("\u{001b}[{}{}\u{001b}[0m",code.to_owned(),format_args!($fmt, $($args)*))
-    }};
-}
 
-#[macro_export]
-macro_rules! colorln {
-    ($color : expr, $text:expr) => {{
         let code = crate::termcolor::get_code(&$color);
-        format_args!("\u{001b}[{}{}\u{001b}[0m\n",code.to_owned(),$text)
+        if cfg!(windows){
+            format!($text)
+        } else {
+            format!("\u{001b}[{}{}\u{001b}[0m",code.to_owned(),$text)
+        }
     }};
     ($color : expr, $fmt:expr, $($args : tt) *) => {{
         let code = crate::termcolor::get_code(&$color);
-        format_args!("\u{001b}[{}{}\u{001b}[0m\n",code.to_owned(),format_args!($fmt, $($args)*))
+        if cfg!(windows) {
+            format!($fmt, $($args)*)
+        } else {
+            format!("\u{001b}[{}{}\u{001b}[0m",code.to_owned(),format_args!($fmt, $($args)*))
+        }
     }};
 }
 
 #[macro_export]
 macro_rules! colorprintln {
     ($color : expr, $text:expr) => {{
-        std::io::_print(colorln!($color,$text))
+        println!("{}",color!($color,$text))
     }};
     ($color : expr, $fmt:expr, $($args : tt) *) => {{
-        std::io::_print(colorln!($color , $fmt, $($args)*))
+        println!("{}",color!($color , $fmt, $($args)*))
     }};
 }

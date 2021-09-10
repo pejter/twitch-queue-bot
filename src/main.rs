@@ -1,5 +1,3 @@
-#![feature(print_internals)]
-
 mod config;
 mod lib;
 mod termcolor;
