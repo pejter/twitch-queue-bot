@@ -1,5 +1,7 @@
 // Single-file console text color formatting
 // http://www.lihaoyi.com/post/BuildyourownCommandLinewithANSIescapecodes.html
+
+#[allow(dead_code)]
 pub enum Color {
     Black,
     BgBlack,
