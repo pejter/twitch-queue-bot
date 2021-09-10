@@ -154,6 +154,11 @@ fn main() {
     .unwrap();
 
     loop {
+        bot.chat
+            .send_msg(
+                "The queue is now open! Available commands: !join, !leave, !position, !length",
+            )
+            .expect("Unable to send greeting");
         let reader = bot.chat.get_reader().expect("Getting chat reader failed");
         for result in reader.lines() {
             match result {
