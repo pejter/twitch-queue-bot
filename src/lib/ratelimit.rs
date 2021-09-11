@@ -11,7 +11,7 @@ pub struct Limiter {
 }
 
 impl Limiter {
-    pub fn new(capacity: usize, interval: Duration) -> Self {
+    pub fn new(capacity: usize, tokens: usize, interval: Duration) -> Self {
         if capacity == 0 {
             panic!("Capacity can't be zero!")
         }
@@ -19,7 +19,7 @@ impl Limiter {
         Self {
             interval,
             window: VecDeque::new(),
-            tokens: AtomicUsize::new(capacity),
+            tokens: AtomicUsize::new(tokens),
             capacity: AtomicUsize::new(capacity),
         }
     }
@@ -45,16 +45,15 @@ impl Limiter {
     pub fn wait(&mut self) {
         loop {
             self.refill();
-            if self.tokens.load(Ordering::Acquire) == 0 {
-                let wait_time = match self.window.get(0) {
-                    Some(future) => future.saturating_duration_since(Instant::now()),
-                    None => Duration::from_millis(100), // This should never happen
-                };
-                std::thread::sleep(wait_time);
-            } else {
+            if self.tokens.load(Ordering::Acquire) > 0 {
                 self.take();
                 return;
             }
+            let wait_time = match self.window.get(0) {
+                Some(future) => future.saturating_duration_since(Instant::now()),
+                None => Duration::from_millis(100), // This should never happen
+            };
+            std::thread::sleep(wait_time);
         }
     }
 }

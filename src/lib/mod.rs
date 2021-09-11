@@ -13,6 +13,7 @@ use std::time::Duration;
 pub type ChannelContent = String;
 pub type ChannelError = SendError<ChannelContent>;
 
+const INIT_MESSAGES: usize = 2; // How many JOIN/PASS messages we send in the init
 const USER_RATE_LIMIT: usize = 20;
 const MOD_RATE_LIMIT: usize = 100;
 
@@ -43,13 +44,13 @@ impl ChatClient {
         let (sender, receiver) = channel();
         let limiter = Arc::new(RwLock::new(Limiter::new(
             USER_RATE_LIMIT,
+            USER_RATE_LIMIT.saturating_sub(INIT_MESSAGES),
             Duration::from_secs(30),
         )));
         let limiter_inner = Arc::clone(&limiter);
         std::thread::spawn(move || {
             for msg in receiver.iter() {
                 limiter_inner.write().unwrap().wait();
-                println!("Sending: {}", msg);
                 socket_recv
                     .write_all(format!("{}\r\n", msg).as_bytes())
                     .expect("Sending message failed");
