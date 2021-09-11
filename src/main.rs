@@ -133,7 +133,7 @@ fn message_handler(bot: &mut Bot, msg: String) {
     }
 }
 fn main() {
-    colorprintln!(Color::Blue, "Reading config");
+    colorprintln!(Color::Green, "Reading config");
     let config = config::read().unwrap();
     let oauth_token = config
         .get("OAUTH_TOKEN")
@@ -145,7 +145,7 @@ fn main() {
         .get("CHANNEL_NAME")
         .expect("CHANNEL_NAME must be present in the config");
 
-    colorprintln!(Color::Blue, "Creating bot");
+    colorprintln!(Color::Green, "Creating bot");
     let mut bot = Bot::new(ChatConfig {
         oauth_token: oauth_token.to_owned(),
         bot_username: bot_username.to_owned(),
@@ -175,7 +175,7 @@ fn main() {
             duration
         );
         thread::sleep(duration);
-        colorprintln!(Color::Blue, "Reconnecting");
+        colorprintln!(Color::Green, "Reconnecting");
         bot.reconnect().unwrap();
     }
 }

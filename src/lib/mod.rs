@@ -96,7 +96,7 @@ impl ChatClient {
         let chan = &self.config.channel_name;
         self.modlist.clear();
         self.modlist.insert(chan.to_owned());
-        self.modlist.extend(modlist.map(|s| s.to_owned()));
+        self.modlist.extend(modlist.map(String::from));
         match self
             .modlist
             .contains(&self.config.bot_username.to_lowercase())
