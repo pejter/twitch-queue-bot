@@ -7,7 +7,7 @@ use std::io;
 use std::io::prelude::*;
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, SendError, Sender};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub type ChannelContent = String;
@@ -28,7 +28,7 @@ pub struct ChatClient {
     config: ChatConfig,
     socket: TcpStream,
     sender: Sender<ChannelContent>,
-    limiter: Arc<RwLock<Limiter>>,
+    limiter: Arc<Limiter>,
     pub modlist: HashSet<String>,
 }
 
@@ -42,15 +42,15 @@ impl ChatClient {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
         let mut socket_recv = socket.try_clone()?;
         let (sender, receiver) = channel();
-        let limiter = Arc::new(RwLock::new(Limiter::new(
+        let limiter = Arc::new(Limiter::new(
             USER_RATE_LIMIT,
             USER_RATE_LIMIT.saturating_sub(INIT_MESSAGES),
             Duration::from_secs(30),
-        )));
+        ));
         let limiter_inner = Arc::clone(&limiter);
         std::thread::spawn(move || {
             for msg in receiver.iter() {
-                limiter_inner.write().unwrap().wait();
+                limiter_inner.wait();
                 socket_recv
                     .write_all(format!("{}\r\n", msg).as_bytes())
                     .expect("Sending message failed");
@@ -99,8 +99,8 @@ impl ChatClient {
             .modlist
             .contains(&self.config.bot_username.to_lowercase())
         {
-            true => self.limiter.read().unwrap().set_capacity(MOD_RATE_LIMIT),
-            false => self.limiter.read().unwrap().set_capacity(USER_RATE_LIMIT),
+            true => self.limiter.set_capacity(MOD_RATE_LIMIT),
+            false => self.limiter.set_capacity(USER_RATE_LIMIT),
         }
     }
 }
