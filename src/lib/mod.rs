@@ -40,18 +40,19 @@ pub struct Bot {
 impl ChatClient {
     pub fn connect(config: ChatConfig) -> Result<Self, Box<dyn Error>> {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
-        let mut socket_recv = socket.try_clone()?;
+        let mut thread_socket = socket.try_clone()?;
         let (sender, receiver) = channel();
         let limiter = Arc::new(Limiter::new(
             USER_RATE_LIMIT,
             USER_RATE_LIMIT.saturating_sub(INIT_MESSAGES),
             Duration::from_secs(30),
         ));
+
         let limiter_inner = Arc::clone(&limiter);
         std::thread::spawn(move || {
             for msg in receiver.iter() {
                 limiter_inner.wait();
-                socket_recv
+                thread_socket
                     .write_all(format!("{}\r\n", msg).as_bytes())
                     .expect("Sending message failed");
             }
@@ -82,6 +83,7 @@ impl ChatClient {
     }
 
     pub fn send_msg(&mut self, msg: &str) -> Result<(), SendError<ChannelContent>> {
+        println!("< {}", msg);
         self.sender
             .send(format!("PRIVMSG #{} :{}", self.config.channel_name, msg))
     }

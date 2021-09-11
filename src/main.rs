@@ -122,13 +122,13 @@ fn message_handler(bot: &mut Bot, msg: String) {
             if let Some(idx) = line.find(prefix) {
                 let modlist = line[idx + prefix.len()..].split(", ");
                 bot.chat.set_modlist(modlist);
-                println!("Mods: {:#?}", bot.chat.modlist)
+                println!("Moderators: {:#?}", bot.chat.modlist)
             }
         }
         line if line.contains("USERSTATE") => {}
 
         _ => {
-            println!("Received: {}", msg)
+            println!("> {}", msg)
         }
     }
 }

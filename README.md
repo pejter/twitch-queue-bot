@@ -10,7 +10,7 @@ The twitch bot supports the following **user** commands:
 
 and the following **mod** commands:
 
-- !next -> Advance the queue by one, it will also display who's the next person
+- !next -> Advance the queue by one and displays the new head of the queue
 - !clear -> Clear the queue
 
 Features
@@ -24,3 +24,4 @@ TODO
 - [ ] Persistence
 - [ ] Multiple queues
 - [ ] Manual opening/closing
+- [ ] Join/leve message batching
