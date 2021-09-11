@@ -146,12 +146,7 @@ fn main() {
         .expect("CHANNEL_NAME must be present in the config");
 
     colorprintln!(Color::Green, "Creating bot");
-    let mut bot = Bot::new(ChatConfig {
-        oauth_token: oauth_token.to_owned(),
-        bot_username: bot_username.to_owned(),
-        channel_name: channel_name.to_owned(),
-    })
-    .unwrap();
+    let mut bot = Bot::new(ChatConfig::new(oauth_token, bot_username, channel_name)).unwrap();
 
     loop {
         bot.chat

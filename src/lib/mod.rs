@@ -24,6 +24,16 @@ pub struct ChatConfig {
     pub channel_name: String,
 }
 
+impl ChatConfig {
+    pub fn new(oauth_token: &str, bot_username: &str, channel_name: &str) -> Self {
+        Self {
+            oauth_token: oauth_token.to_owned(),
+            bot_username: bot_username.to_lowercase(),
+            channel_name: channel_name.to_lowercase(),
+        }
+    }
+}
+
 pub struct ChatClient {
     config: ChatConfig,
     socket: TcpStream,
@@ -97,10 +107,7 @@ impl ChatClient {
         self.modlist.clear();
         self.modlist.insert(chan.to_owned());
         self.modlist.extend(modlist.map(String::from));
-        match self
-            .modlist
-            .contains(&self.config.bot_username.to_lowercase())
-        {
+        match self.modlist.contains(&self.config.bot_username) {
             true => self.limiter.set_capacity(MOD_RATE_LIMIT),
             false => self.limiter.set_capacity(USER_RATE_LIMIT),
         }
