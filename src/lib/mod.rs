@@ -92,7 +92,7 @@ impl ChatClient {
         self.socket.write_all(format!("{}\r\n", msg).as_bytes())
     }
 
-    pub fn send_msg(&mut self, msg: &str) -> Result<(), SendError<ChannelContent>> {
+    pub fn send_msg(&self, msg: &str) -> Result<(), SendError<ChannelContent>> {
         println!("< {}", msg);
         self.sender
             .send(format!("PRIVMSG #{} :{}", self.config.channel_name, msg))
@@ -121,9 +121,81 @@ impl Bot {
             queue: Vec::new(),
         })
     }
+
     pub fn reconnect(&mut self) -> Result<(), Box<dyn Error>> {
         let config = self.chat.config.clone();
         self.chat = ChatClient::connect(config)?;
         Ok(())
+    }
+
+    pub fn clear(&mut self) -> Result<(), ChannelError> {
+        self.queue.clear();
+        self.chat.send_msg("Queue has been cleared")
+    }
+
+    pub fn push(&mut self, user: &str) -> Result<(), ChannelError> {
+        match self.queue.iter().position(|x| x == user) {
+            Some(idx) => self.chat.send_msg(&format!(
+                "@{}: You're already in queue at position {}",
+                user,
+                idx + 1
+            )),
+            None => {
+                self.queue.push(user.to_owned());
+                self.chat.send_msg(&format!(
+                    "@{}: You've been added to the queue at position {}",
+                    user,
+                    self.queue.len()
+                ))
+            }
+        }
+    }
+
+    pub fn remove(&mut self, user: &str) -> Result<(), ChannelError> {
+        match self.queue.iter().position(|x| x == user) {
+            Some(idx) => {
+                self.queue.remove(idx);
+                self.chat
+                    .send_msg(&format!("@{}: You've been removed from the queue", user))
+            }
+            None => self
+                .chat
+                .send_msg(&format!("@{}: You were not queued", user)),
+        }
+    }
+
+    pub fn shift(&mut self) -> Result<(), ChannelError> {
+        match self.queue.is_empty() {
+            true => self.chat.send_msg("The queue is currently empty"),
+            false => {
+                self.chat
+                    .send_msg(&format!("@{}: It's you turn!", self.queue.remove(0)))?;
+                match self.queue.first() {
+                    None => self
+                        .chat
+                        .send_msg("That was the last one. No more people in the queue"),
+                    Some(user) => self
+                        .chat
+                        .send_msg(&format!("@{}: You're now first in the queue", user)),
+                }
+            }
+        }
+    }
+
+    pub fn find(&self, user: &str) -> Result<(), ChannelError> {
+        match self.queue.iter().position(|x| x == user) {
+            Some(idx) => {
+                self.chat
+                    .send_msg(&format!("@{} you are number {} in queue", user, idx + 1))
+            }
+            None => self
+                .chat
+                .send_msg(&format!("@{}: You're not currently queued", user)),
+        }
+    }
+
+    pub fn length(&self) -> Result<(), ChannelError> {
+        self.chat
+            .send_msg(&format!("There are {} people in queue", self.queue.len()))
     }
 }
