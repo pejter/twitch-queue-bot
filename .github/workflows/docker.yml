@@ -1,0 +1,16 @@
+on: [push]
+
+name: Docker
+
+jobs:
+  docker:
+    name: Build docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dawidd6/action-docker-publish-changed@v3
+        with:
+          username: ${{secrets.DOCKER_USER}}
+          password: ${{secrets.DOCKER_TOKEN}}
+          platforms: linux/amd64,linux/arm64
+          tag: latest
