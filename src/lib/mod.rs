@@ -169,7 +169,7 @@ impl Bot {
             true => self.chat.send_msg("The queue is currently empty"),
             false => {
                 self.chat
-                    .send_msg(&format!("@{}: It's you turn!", self.queue.remove(0)))?;
+                    .send_msg(&format!("@{}: It's your turn!", self.queue.remove(0)))?;
                 match self.queue.first() {
                     None => self
                         .chat
