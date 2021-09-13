@@ -29,6 +29,7 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> Result<(), ChannelErr
         "!length" => bot.length(),
         // Mod commands
         "!next" => mod_command!(modlist, user, { bot.shift() }),
+        "!list" => mod_command!(modlist, user, { bot.list() }),
         "!clear" => mod_command!(modlist, user, { bot.clear() }),
         // Not a command
         default => {

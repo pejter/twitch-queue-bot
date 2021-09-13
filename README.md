@@ -11,6 +11,7 @@ The twitch bot supports the following **user** commands:
 and the following **mod** commands:
 
 - !next -> Advance the queue by one and displays the new head of the queue
+- !list -> List the first 5 people in queue
 - !clear -> Clear the queue
 
 Features

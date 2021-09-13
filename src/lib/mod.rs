@@ -198,4 +198,21 @@ impl Bot {
         self.chat
             .send_msg(&format!("There are {} people in queue", self.queue.len()))
     }
+
+    pub fn list(&self) -> Result<(), ChannelError> {
+        const MAX_LIST: usize = 5;
+        match self.queue.len() {
+            0 => self.chat.send_msg("The queue is currently empty"),
+            1..=MAX_LIST => self.chat.send_msg(&format!(
+                "People in queue: {}",
+                self.queue.as_slice().join(", ")
+            )),
+            n => self.chat.send_msg(&format!(
+                "People in queue (first {} out of {}): {}",
+                MAX_LIST,
+                n,
+                self.queue[..MAX_LIST].join(", ")
+            )),
+        }
+    }
 }
