@@ -37,6 +37,7 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> Result<(), ChannelErr
         }
     }
 }
+
 fn message_handler(bot: &mut Bot, msg: String) {
     match msg.as_str() {
         "PING :tmi.twitch.tv" => bot
@@ -69,6 +70,7 @@ fn message_handler(bot: &mut Bot, msg: String) {
         }
     }
 }
+
 fn main() {
     colorprintln!(Color::Green, "Reading config");
     let config = config::read().unwrap();
