@@ -8,6 +8,10 @@ use std::{thread, time};
 
 use termcolor::Color;
 
+// If someone with a nickname of length 1 sent us a message it would look like this
+// Which means we're safe to skip at least this many characters for message detection
+const TWITCH_ENVELOPE_LEN: usize = ":_!_@_.tmi.twitch.tv PRIVMSG #_ ".len();
+
 macro_rules! mod_command {
     ($modlist:tt,$user:tt,$b:block) => {
         match $modlist.contains($user) {
@@ -51,10 +55,13 @@ fn message_handler(bot: &mut Bot, msg: String) {
                 &line[1..idx]
             };
             let msg = {
-                let idx = line[1..].find(':').unwrap();
-                &line[idx + 2..]
+                let line = &line[TWITCH_ENVELOPE_LEN..];
+                let idx = line.find(':').unwrap();
+                &line[idx + 1..]
             };
-            handle_command(bot, user, msg).expect("Couldn't send message");
+            if let Err(e) = handle_command(bot, user, msg) {
+                println!("Couldn't send message: {}", e);
+            };
         }
         line if line.contains("NOTICE") => {
             let prefix = "The moderators of this channel are: ";
