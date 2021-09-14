@@ -95,6 +95,7 @@ impl Bot {
     }
 
     pub fn list(&self) -> ChannelResult {
+        println!("Logging full list: {:?}", self.queue);
         const MAX_LIST: usize = 5;
         match self.queue.len() {
             0 => self.chat.send_msg("The queue is currently empty"),
