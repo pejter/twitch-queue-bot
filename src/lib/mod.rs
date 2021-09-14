@@ -1,7 +1,7 @@
 pub mod chat;
 mod ratelimit;
 
-pub use chat::{ChannelError, ChatClient, ChatConfig};
+pub use chat::{ChannelResult, ChatClient, ChatConfig};
 use std::error::Error;
 
 pub struct Bot {
@@ -23,12 +23,12 @@ impl Bot {
         Ok(())
     }
 
-    pub fn clear(&mut self) -> Result<(), ChannelError> {
+    pub fn clear(&mut self) -> ChannelResult {
         self.queue.clear();
         self.chat.send_msg("Queue has been cleared")
     }
 
-    pub fn push(&mut self, user: &str) -> Result<(), ChannelError> {
+    pub fn push(&mut self, user: &str) -> ChannelResult {
         match self.queue.iter().position(|x| x == user) {
             Some(idx) => self.chat.send_msg(&format!(
                 "@{}: You're already in queue at position {}",
@@ -46,7 +46,7 @@ impl Bot {
         }
     }
 
-    pub fn remove(&mut self, user: &str) -> Result<(), ChannelError> {
+    pub fn remove(&mut self, user: &str) -> ChannelResult {
         match self.queue.iter().position(|x| x == user) {
             Some(idx) => {
                 self.queue.remove(idx);
@@ -59,7 +59,7 @@ impl Bot {
         }
     }
 
-    pub fn shift(&mut self) -> Result<(), ChannelError> {
+    pub fn shift(&mut self) -> ChannelResult {
         match self.queue.is_empty() {
             true => self.chat.send_msg("The queue is currently empty"),
             false => {
@@ -77,7 +77,7 @@ impl Bot {
         }
     }
 
-    pub fn find(&self, user: &str) -> Result<(), ChannelError> {
+    pub fn find(&self, user: &str) -> ChannelResult {
         match self.queue.iter().position(|x| x == user) {
             Some(idx) => {
                 self.chat
@@ -89,12 +89,12 @@ impl Bot {
         }
     }
 
-    pub fn length(&self) -> Result<(), ChannelError> {
+    pub fn length(&self) -> ChannelResult {
         self.chat
             .send_msg(&format!("There are {} people in queue", self.queue.len()))
     }
 
-    pub fn list(&self) -> Result<(), ChannelError> {
+    pub fn list(&self) -> ChannelResult {
         const MAX_LIST: usize = 5;
         match self.queue.len() {
             0 => self.chat.send_msg("The queue is currently empty"),

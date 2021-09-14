@@ -1,6 +1,5 @@
 use super::ratelimit::Limiter;
 use std::collections::HashSet;
-use std::error::Error;
 use std::io;
 use std::io::prelude::*;
 use std::net::TcpStream;
@@ -10,6 +9,7 @@ use std::time::Duration;
 
 pub type ChannelContent = String;
 pub type ChannelError = SendError<ChannelContent>;
+pub type ChannelResult = Result<(), ChannelError>;
 
 const INIT_MESSAGES: usize = 2; // How many JOIN/PASS messages we send in the init
 const USER_RATE_LIMIT: usize = 20;
@@ -41,7 +41,7 @@ pub struct ChatClient {
 }
 
 impl ChatClient {
-    pub fn connect(config: ChatConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn connect(config: ChatConfig) -> io::Result<Self> {
         let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
         let mut thread_socket = socket.try_clone()?;
         let (sender, receiver) = channel();
@@ -73,10 +73,11 @@ impl ChatClient {
         client.send_raw(&format!("NICK {}", client.config.bot_username))?;
         client.send_raw(&format!("JOIN #{}", client.config.channel_name))?;
         client.send_raw("CAP REQ :twitch.tv/commands")?;
-        client.send_msg("/mods")?;
+        client.send_raw(&format!("PRIVMSG #{} :/mods", client.config.channel_name))?;
 
-        match client.socket.take_error()? {
-            Some(error) => Err(Box::new(error)),
+        match client.socket.take_error().transpose() {
+            // This is a Result<io::Error, io::Error> because we read an error or failed reading
+            Some(error) => Err(error.into_ok_or_err()),
             None => Ok(client),
         }
     }
@@ -89,7 +90,7 @@ impl ChatClient {
         self.socket.write_all(format!("{}\r\n", msg).as_bytes())
     }
 
-    pub fn send_msg(&self, msg: &str) -> Result<(), SendError<ChannelContent>> {
+    pub fn send_msg(&self, msg: &str) -> ChannelResult {
         println!("< {}", msg);
         self.sender
             .send(format!("PRIVMSG #{} :{}", self.config.channel_name, msg))

@@ -1,8 +1,10 @@
+#![feature(result_into_ok_or_err)]
+
 mod config;
 mod lib;
 mod termcolor;
 
-use lib::{Bot, ChannelError, ChatConfig};
+use lib::{Bot, ChannelResult, ChatConfig};
 use std::io::BufRead;
 use std::{thread, time};
 
@@ -24,7 +26,7 @@ macro_rules! mod_command {
     };
 }
 
-fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> Result<(), ChannelError> {
+fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => bot.push(user),
