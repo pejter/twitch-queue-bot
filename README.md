@@ -13,6 +13,9 @@ and the following **mod** commands:
 - !next -> Advance the queue by one and displays the new head of the queue
 - !list -> List the first 5 people in queue
 - !clear -> Clear the queue
+- !create *name* -> Create a new queue with the rest of the message as the name
+- !open *name* -> Open the queue with a specific name (case insensitive); queue must exist
+- !close -> Close the current queue
 
 Features
 ---------
@@ -22,7 +25,4 @@ Features
 TODO
 -----
 
-- [ ] Persistence
-- [ ] Multiple queues
-- [ ] Manual opening/closing
-- [ ] Join/leve message batching
+- [ ] Join/leave message batching

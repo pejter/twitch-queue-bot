@@ -29,14 +29,27 @@ macro_rules! mod_command {
 fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
-        "!join" => bot.push(user),
-        "!leave" => bot.remove(user),
-        "!position" => bot.find(user),
+        "!join" => bot.join(user),
+        "!leave" => bot.leave(user),
+        "!position" => bot.position(user),
         "!length" => bot.length(),
         // Mod commands
-        "!next" => mod_command!(modlist, user, { bot.shift() }),
+        "!next" => mod_command!(modlist, user, { bot.next() }),
         "!list" => mod_command!(modlist, user, { bot.list() }),
         "!clear" => mod_command!(modlist, user, { bot.clear() }),
+        "!close" => mod_command!(modlist, user, { bot.close() }),
+        command if command.starts_with("!open") => mod_command!(modlist, user, {
+            match command.split_once(" ") {
+                None => bot.chat.send_msg("You must provide a name for the queue"),
+                Some(name) => bot.open(name.1),
+            }
+        }),
+        command if command.starts_with("!create") => mod_command!(modlist, user, {
+            match command.split_once(" ") {
+                None => bot.chat.send_msg("You must provide a name for the queue"),
+                Some(name) => bot.create(name.1),
+            }
+        }),
         // Not a command
         default => {
             println!("{}: {}", user, default);
@@ -99,9 +112,10 @@ fn main() {
 
     loop {
         bot.chat
-            .send_msg(
-                "The queue is now open! Available commands: !join, !leave, !position, !length",
-            )
+            .send_msg(&format!(
+                "Hello there gamers! {} is now in chat.",
+                bot_username
+            ))
             .expect("Unable to send greeting");
         let reader = bot.chat.get_reader().expect("Getting chat reader failed");
         for result in reader.lines() {
