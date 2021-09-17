@@ -1,5 +1,7 @@
 FROM rustlang/rust:nightly-alpine as builder
 
+RUN apk add --no-cache musl-dev
+
 WORKDIR /code
 COPY . .
 
