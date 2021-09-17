@@ -12,4 +12,5 @@ FROM scratch
 COPY --from=builder /usr/local/cargo/bin/twitch-queue-bot /app
 COPY config.txt /
 
+VOLUME [ "/data" ]
 CMD ["/app"]
