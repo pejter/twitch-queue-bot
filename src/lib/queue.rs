@@ -76,12 +76,12 @@ impl Queue {
         serde_json::to_writer(file, self).unwrap()
     }
 
-    pub fn push(&mut self, user: &str) -> (bool, usize) {
+    pub fn push(&mut self, user: &str) -> Result<usize, usize> {
         match self.find(user) {
-            Some(idx) => (false, idx),
+            Some(idx) => Err(idx),
             None => {
                 self.list.push(user.to_owned());
-                (true, self.list.len() - 1)
+                Ok(self.list.len() - 1)
             }
         }
     }
@@ -93,12 +93,12 @@ impl Queue {
         }
     }
 
-    pub fn remove(&mut self, user: &str) -> bool {
+    pub fn remove(&mut self, user: &str) -> Result<(), ()> {
         match self.find(user) {
-            None => false,
+            None => Err(()),
             Some(idx) => {
                 self.list.remove(idx);
-                true
+                Ok(())
             }
         }
     }

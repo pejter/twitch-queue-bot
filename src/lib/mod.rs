@@ -90,12 +90,12 @@ impl Bot {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg("Queue is currently closed")?),
             Some(queue) => match queue.push(user) {
-                (false, idx) => self.chat.send_msg(&format!(
+                Err(idx) => self.chat.send_msg(&format!(
                     "@{}: You're already in queue at position {}",
                     user,
                     idx + 1
                 )),
-                (true, idx) => self.chat.send_msg(&format!(
+                Ok(idx) => self.chat.send_msg(&format!(
                     "@{}: You've been added to the queue at position {}",
                     user,
                     idx + 1
@@ -108,10 +108,10 @@ impl Bot {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg("Queue is currently closed")?),
             Some(queue) => match queue.remove(user) {
-                true => self
+                Ok(_) => self
                     .chat
                     .send_msg(&format!("@{}: You've been removed from the queue", user)),
-                false => self
+                Err(_) => self
                     .chat
                     .send_msg(&format!("@{}: You were not queued", user)),
             },
