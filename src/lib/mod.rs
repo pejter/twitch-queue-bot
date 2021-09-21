@@ -7,6 +7,11 @@ pub use queue::Queue;
 use std::error::Error;
 use std::io;
 
+mod messages {
+    pub const QUEUE_NOT_LOADED: &str = "No Queue is currently loaded";
+    pub const QUEUE_CLOSED: &str = "Queue is currently closed";
+}
+
 pub struct Bot {
     pub chat: ChatClient,
     pub queue: Option<Queue>,
@@ -32,53 +37,65 @@ impl Bot {
     }
 
     pub fn create(&mut self, name: &str) -> ChannelResult {
-        match self.queue {
-            Some(_) => Ok(self
-                .chat
-                .send_msg("A queue is currently open, close it to create more queues")?),
-            None => {
-                Queue::new(name);
+        self.queue = Some(Queue::new(name));
+        self.chat
+            .send_msg(&format!("Queue \"{}\" has been created and loaded", name))
+    }
+
+    pub fn unload(&mut self) -> ChannelResult {
+        self.queue = None;
+        self.chat.send_msg("Queue has been unloaded")
+    }
+
+    pub fn load(&mut self, name: &str) -> ChannelResult {
+        match Queue::load(name) {
+            Some(queue) => {
+                self.queue = Some(queue);
                 Ok(self.chat.send_msg(&format!(
-                    "Queue \"{}\" has been created and is now open",
-                    name
+                    "Queue \"{}\" is now loaded",
+                    self.queue.as_ref().unwrap().name
                 ))?)
             }
+            None => Ok(self
+                .chat
+                .send_msg(&format!("A queue named {} doesn't exist", name))?),
         }
     }
 
-    pub fn open(&mut self, name: &str) -> ChannelResult {
-        match self.queue {
-            Some(_) => Ok(self.chat.send_msg("Another queue is currently open")?),
-            None => match Queue::load(name) {
-                Some(queue) => {
-                    self.queue = Some(queue);
-                    Ok(self.chat.send_msg(&format!(
-                        "Queue \"{}\" is now open",
-                        self.queue.as_ref().unwrap().name
-                    ))?)
-                }
-                None => Ok(self
-                    .chat
-                    .send_msg(&format!("A queue named {} doesn't exist", name))?),
-            },
-        }
-    }
-
-    pub fn close(&mut self) -> ChannelResult {
+    pub fn save(&mut self) -> ChannelResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
-                self.chat.send_msg("Queue closed")?;
                 queue.save();
-                self.queue = None;
+                self.chat.send_msg(&format!("Queue {} saved", queue.name))?;
                 Ok(())
             }
         }
     }
 
+    pub fn open(&mut self) -> ChannelResult {
+        match self.queue.as_mut() {
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
+            Some(queue) => match queue.open() {
+                Err(_) => Ok(self.chat.send_msg("Queue is already open")?),
+                Ok(_) => Ok(self.chat.send_msg("Queue is now open")?),
+            },
+        }
+    }
+
+    pub fn close(&mut self) -> ChannelResult {
+        match self.queue.as_mut() {
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
+            Some(queue) => match queue.close() {
+                Err(_) => Ok(self.chat.send_msg("Queue is already closed")?),
+                Ok(_) => Ok(self.chat.send_msg("Queue has been closed")?),
+            },
+        }
+    }
+
     pub fn clear(&mut self) -> ChannelResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
                 queue.clear();
                 self.chat.send_msg("Queue has been cleared")
@@ -88,25 +105,28 @@ impl Bot {
 
     pub fn join(&mut self, user: &str) -> ChannelResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
-            Some(queue) => match queue.push(user) {
-                Err(idx) => self.chat.send_msg(&format!(
-                    "@{}: You're already in queue at position {}",
-                    user,
-                    idx + 1
-                )),
-                Ok(idx) => self.chat.send_msg(&format!(
-                    "@{}: You've been added to the queue at position {}",
-                    user,
-                    idx + 1
-                )),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
+            Some(queue) => match queue.is_open {
+                false => Ok(self.chat.send_msg(messages::QUEUE_CLOSED)?),
+                true => match queue.push(user) {
+                    Err(idx) => self.chat.send_msg(&format!(
+                        "@{}: You're already in queue at position {}",
+                        user,
+                        idx + 1
+                    )),
+                    Ok(idx) => self.chat.send_msg(&format!(
+                        "@{}: You've been added to the queue at position {}",
+                        user,
+                        idx + 1
+                    )),
+                },
             },
         }
     }
 
     pub fn leave(&mut self, user: &str) -> ChannelResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.remove(user) {
                 Ok(_) => self
                     .chat
@@ -120,7 +140,7 @@ impl Bot {
 
     pub fn next(&mut self) -> ChannelResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.shift() {
                 None => self.chat.send_msg("The queue is currently empty"),
                 Some(user) => {
@@ -140,7 +160,7 @@ impl Bot {
 
     pub fn position(&self, user: &str) -> ChannelResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.find(user) {
                 Some(idx) => {
                     self.chat
@@ -155,7 +175,7 @@ impl Bot {
 
     pub fn length(&self) -> ChannelResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => self
                 .chat
                 .send_msg(&format!("There are {} people in queue", queue.len())),
@@ -164,7 +184,7 @@ impl Bot {
 
     pub fn list(&self) -> ChannelResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg("Queue is currently closed")?),
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
                 let l = queue.list();
                 println!("Logging full list: {:?}", l);

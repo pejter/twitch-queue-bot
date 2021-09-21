@@ -7,6 +7,7 @@ pub const DATA_DIR: &str = "data/";
 #[derive(Serialize, Deserialize)]
 pub struct Queue {
     pub name: String,
+    pub is_open: bool,
     list: Vec<String>,
 }
 
@@ -41,6 +42,7 @@ impl Queue {
 
     pub fn new(name: &str) -> Self {
         let new = Self {
+            is_open: false,
             name: name.to_owned(),
             list: Vec::new(),
         };
@@ -74,6 +76,25 @@ impl Queue {
             .open(filename)
             .unwrap();
         serde_json::to_writer(file, self).unwrap()
+    }
+
+    pub fn open(&mut self) -> Result<(), ()> {
+        match self.is_open {
+            true => Err(()),
+            false => {
+                self.is_open = true;
+                Ok(())
+            }
+        }
+    }
+    pub fn close(&mut self) -> Result<(), ()> {
+        match self.is_open {
+            false => Err(()),
+            true => {
+                self.is_open = false;
+                Ok(())
+            }
+        }
     }
 
     pub fn push(&mut self, user: &str) -> Result<usize, usize> {
