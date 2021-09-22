@@ -40,6 +40,7 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
         "!clear" => mod_command!(modlist, user, { bot.clear() }),
         "!open" => mod_command!(modlist, user, { bot.open() }),
         "!close" => mod_command!(modlist, user, { bot.close() }),
+        "!reset" => mod_command!(modlist, user, { bot.reset() }),
         "!save" => mod_command!(modlist, user, { bot.save() }),
         "!unload" => mod_command!(modlist, user, { bot.unload() }),
         command if command.starts_with("!load") => mod_command!(modlist, user, {

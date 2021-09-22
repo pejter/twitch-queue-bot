@@ -3,7 +3,7 @@ mod queue;
 mod ratelimit;
 
 pub use chat::{ChannelResult, ChatClient, ChatConfig};
-pub use queue::Queue;
+pub use queue::{PushError, Queue};
 use std::error::Error;
 use std::io;
 
@@ -109,7 +109,11 @@ impl Bot {
             Some(queue) => match queue.is_open {
                 false => Ok(self.chat.send_msg(messages::QUEUE_CLOSED)?),
                 true => match queue.push(user) {
-                    Err(idx) => self.chat.send_msg(&format!(
+                    Err(PushError::Played) => self.chat.send_msg(&format!(
+                        "@{}: You've already played. Wait until queue reset to join again.",
+                        user,
+                    )),
+                    Err(PushError::Present(idx)) => self.chat.send_msg(&format!(
                         "@{}: You're already in queue at position {}",
                         user,
                         idx + 1
@@ -135,6 +139,16 @@ impl Bot {
                     .chat
                     .send_msg(&format!("@{}: You were not queued", user)),
             },
+        }
+    }
+
+    pub fn reset(&mut self) -> ChannelResult {
+        match self.queue.as_mut() {
+            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
+            Some(queue) => {
+                queue.reset();
+                self.chat.send_msg("Player history has been reset!")
+            }
         }
     }
 

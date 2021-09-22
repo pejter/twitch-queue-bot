@@ -1,14 +1,21 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 
 pub const DATA_DIR: &str = "data/";
+
+pub enum PushError {
+    Present(usize),
+    Played,
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Queue {
     pub name: String,
     pub is_open: bool,
     list: Vec<String>,
+    played: HashSet<String>,
 }
 
 impl Queue {
@@ -45,6 +52,7 @@ impl Queue {
             is_open: false,
             name: name.to_owned(),
             list: Vec::new(),
+            played: HashSet::new(),
         };
         fs::File::create(new.filename()).unwrap();
         new.save();
@@ -97,9 +105,13 @@ impl Queue {
         }
     }
 
-    pub fn push(&mut self, user: &str) -> Result<usize, usize> {
+    pub fn push(&mut self, user: &str) -> Result<usize, PushError> {
+        if self.played.contains(user) {
+            return Err(PushError::Played);
+        }
+
         match self.find(user) {
-            Some(idx) => Err(idx),
+            Some(idx) => Err(PushError::Present(idx)),
             None => {
                 self.list.push(user.to_owned());
                 Ok(self.list.len() - 1)
@@ -110,8 +122,16 @@ impl Queue {
     pub fn shift(&mut self) -> Option<String> {
         match self.list.is_empty() {
             true => None,
-            false => Some(self.list.remove(0)),
+            false => {
+                let user = self.list.remove(0);
+                self.played.insert(user.clone());
+                Some(user)
+            }
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.played = HashSet::new();
     }
 
     pub fn remove(&mut self, user: &str) -> Result<(), ()> {

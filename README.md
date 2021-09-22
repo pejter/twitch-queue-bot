@@ -12,10 +12,13 @@ The twitch bot supports the following **user** commands:
 and the following **mod** commands:
 
 - !next -> Advance the queue by one and displays the new head of the queue
+  - This will add the player to the player history which will make them unable to join again until a reset
 - !list -> List the first 5 people in queue
 - !clear -> Clear the queue
 - !open -> Open the current queue for signups
 - !close -> Close the current queue
+- !reset -> Reset the player history
+  - This **will not** clear the queue
 - !create *name* -> Create a new queue with the rest of the message as its name
   - if the queue already exists this will overwrite it with a new one
 - !unload -> Unload the current queue
@@ -31,6 +34,7 @@ Features
 
 - Queue management
 - Persistence
+- Player history
 
 TODO
 -----
