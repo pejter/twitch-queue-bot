@@ -144,14 +144,14 @@ impl Bot {
             Some(queue) => match queue.shift() {
                 None => self.chat.send_msg("The queue is currently empty"),
                 Some(user) => {
-                    self.chat.send_msg(&format!("@{}: It's your turn!", user))?;
+                    let next_msg = format!("@{} is next!", user);
                     match queue.first() {
                         None => self
                             .chat
-                            .send_msg("That was the last one. No more people in the queue"),
+                            .send_msg(&format!("{} That's the last one.", next_msg)),
                         Some(user) => self
                             .chat
-                            .send_msg(&format!("@{}: You're now first in the queue", user)),
+                            .send_msg(&format!("{} @{} is up after that.", next_msg, user)),
                     }
                 }
             },
@@ -183,6 +183,14 @@ impl Bot {
     }
 
     pub fn list(&self) -> ChannelResult {
+        fn format_list<T: AsRef<str> + std::fmt::Display>(l: &[T]) -> String {
+            l.iter()
+                .enumerate()
+                .map(|(i, s)| format!("[{}. {}]", i + 1, s))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+
         match &self.queue {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
@@ -193,12 +201,12 @@ impl Bot {
                     0 => self.chat.send_msg("The queue is currently empty"),
                     1..=MAX_LIST => self
                         .chat
-                        .send_msg(&format!("People in queue: {}", l.join(", "))),
+                        .send_msg(&format!("People in queue: {}", format_list(l))),
                     n => self.chat.send_msg(&format!(
                         "People in queue (first {} out of {}): {}",
                         MAX_LIST,
                         n,
-                        l[..MAX_LIST].join(", ")
+                        format_list(&l[..MAX_LIST])
                     )),
                 }
             }

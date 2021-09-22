@@ -56,7 +56,7 @@ impl ChatClient {
             for msg in receiver.iter() {
                 limiter_inner.wait();
                 thread_socket
-                    .write_all(format!("{}\r\n", msg).as_bytes())
+                    .write_all(format!("{}\n", msg).as_bytes())
                     .expect("Sending message failed");
             }
         });
