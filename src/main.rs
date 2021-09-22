@@ -27,6 +27,7 @@ macro_rules! mod_command {
 }
 
 fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
+    println!("{}: {}", user, msg);
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => bot.join(user),
@@ -54,10 +55,7 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
             }
         }),
         // Not a command
-        default => {
-            println!("{}: {}", user, default);
-            Ok(())
-        }
+        _ => Ok(()),
     }
 }
 
