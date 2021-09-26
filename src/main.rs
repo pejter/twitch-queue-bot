@@ -6,7 +6,7 @@ mod termcolor;
 
 use lib::{Bot, ChannelResult, ChatConfig};
 use std::io::BufRead;
-use std::{thread, time};
+use std::net::Shutdown;
 
 use termcolor::Color;
 
@@ -112,30 +112,29 @@ fn main() {
     colorprintln!(Color::Green, "Creating bot");
     let mut bot = Bot::new(ChatConfig::new(oauth_token, bot_username, channel_name)).unwrap();
 
-    loop {
-        bot.chat
-            .send_msg(&format!(
-                "Hello there gamers! {} is now in chat.",
-                bot_username
-            ))
-            .expect("Unable to send greeting");
-        let reader = bot.chat.get_reader().expect("Getting chat reader failed");
-        for result in reader.lines() {
-            match result {
-                Ok(line) => message_handler(&mut bot, line),
-                Err(error) => {
-                    colorprintln!(Color::Red, "Error while reading from socket: {}", error);
-                }
+    let (socket, sender) = bot.chat.sockets();
+    ctrlc::set_handler(move || {
+        println!("Received Ctrl-C, exiting...");
+        socket.shutdown(Shutdown::Read).ok();
+        sender.send(None).ok();
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    bot.chat
+        .send_msg(&format!(
+            "Hello there gamers! {} is now in chat.",
+            bot_username
+        ))
+        .expect("Unable to send greeting");
+
+    let reader = bot.chat.get_reader().expect("Getting chat reader failed");
+    for result in reader.lines() {
+        match result {
+            Ok(line) => message_handler(&mut bot, line),
+            Err(error) => {
+                colorprintln!(Color::Red, "Error while reading from socket: {}", error);
             }
         }
-        let duration = time::Duration::from_secs(25);
-        colorprintln!(
-            Color::Red,
-            "Unexpected EOF, reconnecting after {:?}...",
-            duration
-        );
-        thread::sleep(duration);
-        colorprintln!(Color::Green, "Reconnecting");
-        bot.reconnect().unwrap();
     }
+    colorprintln!(Color::Green, "Bot exited");
 }

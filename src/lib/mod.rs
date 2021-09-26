@@ -5,7 +5,6 @@ mod ratelimit;
 pub use chat::{ChannelResult, ChatClient, ChatConfig};
 pub use queue::{PushError, Queue};
 use std::error::Error;
-use std::io;
 
 mod messages {
     pub const QUEUE_NOT_LOADED: &str = "No Queue is currently loaded";
@@ -28,12 +27,6 @@ impl Bot {
             chat: ChatClient::connect(config)?,
             queue: None,
         })
-    }
-
-    pub fn reconnect(&mut self) -> io::Result<()> {
-        let config = self.chat.config();
-        self.chat = ChatClient::connect(config)?;
-        Ok(())
     }
 
     pub fn create(&mut self, name: &str) -> ChannelResult {

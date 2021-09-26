@@ -27,26 +27,6 @@ impl Queue {
         format!("{}{}.json", DATA_DIR, Self::slugify(&self.name))
     }
 
-    pub fn find(&self, user: &str) -> Option<usize> {
-        self.list.iter().position(|x| x == user)
-    }
-
-    pub fn first(&mut self) -> Option<&String> {
-        self.list.first()
-    }
-
-    pub fn len(&self) -> usize {
-        self.list.len()
-    }
-
-    pub fn list(&self) -> &[String] {
-        &self.list
-    }
-
-    pub fn clear(&mut self) {
-        self.list.clear()
-    }
-
     pub fn new(name: &str) -> Self {
         let new = Self {
             is_open: false,
@@ -84,6 +64,34 @@ impl Queue {
             .open(filename)
             .unwrap();
         serde_json::to_writer(file, self).unwrap()
+    }
+}
+
+impl Drop for Queue {
+    fn drop(&mut self) {
+        self.save();
+    }
+}
+
+impl Queue {
+    pub fn find(&self, user: &str) -> Option<usize> {
+        self.list.iter().position(|x| x == user)
+    }
+
+    pub fn first(&mut self) -> Option<&String> {
+        self.list.first()
+    }
+
+    pub fn len(&self) -> usize {
+        self.list.len()
+    }
+
+    pub fn list(&self) -> &[String] {
+        &self.list
+    }
+
+    pub fn clear(&mut self) {
+        self.list.clear()
     }
 
     pub fn open(&mut self) -> Result<(), ()> {

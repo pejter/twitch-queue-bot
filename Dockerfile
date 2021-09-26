@@ -8,6 +8,7 @@ COPY . .
 RUN cargo install --path .
 
 FROM scratch
+STOPSIGNAL SIGINT
 
 COPY --from=builder /usr/local/cargo/bin/twitch-queue-bot /app
 COPY config.txt /

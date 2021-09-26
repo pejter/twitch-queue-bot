@@ -7,7 +7,7 @@ use std::sync::mpsc::{channel, SendError, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 
-pub type ChannelContent = String;
+pub type ChannelContent = Option<String>;
 pub type ChannelError = SendError<ChannelContent>;
 pub type ChannelResult = Result<(), ChannelError>;
 
@@ -54,10 +54,18 @@ impl ChatClient {
         let limiter_inner = Arc::clone(&limiter);
         std::thread::spawn(move || {
             for msg in receiver.iter() {
-                limiter_inner.wait();
-                thread_socket
-                    .write_all(format!("{}\n", msg).as_bytes())
-                    .expect("Sending message failed");
+                match msg {
+                    Some(msg) => {
+                        limiter_inner.wait();
+                        thread_socket
+                            .write_all(format!("{}\n", msg).as_bytes())
+                            .expect("Sending message failed");
+                    }
+                    None => {
+                        println!("Sender thread exiting");
+                        break;
+                    }
+                }
             }
         });
 
@@ -82,8 +90,8 @@ impl ChatClient {
         }
     }
 
-    pub fn config(&self) -> ChatConfig {
-        self.config.clone()
+    pub fn sockets(&self) -> (TcpStream, Sender<ChannelContent>) {
+        (self.socket.try_clone().unwrap(), self.sender.clone())
     }
 
     pub fn send_raw(&mut self, msg: &str) -> io::Result<()> {
@@ -92,8 +100,10 @@ impl ChatClient {
 
     pub fn send_msg(&self, msg: &str) -> ChannelResult {
         println!("< {}", msg);
-        self.sender
-            .send(format!("PRIVMSG #{} :{}", self.config.channel_name, msg))
+        self.sender.send(Some(format!(
+            "PRIVMSG #{} :{}",
+            self.config.channel_name, msg
+        )))
     }
 
     pub fn get_reader(&self) -> io::Result<io::BufReader<TcpStream>> {
