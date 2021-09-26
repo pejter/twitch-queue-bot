@@ -7,7 +7,7 @@ pub use queue::{PushError, Queue};
 use std::error::Error;
 
 mod messages {
-    pub const QUEUE_NOT_LOADED: &str = "No Queue is currently loaded";
+    pub const QUEUE_NOT_LOADED: &str = "No Queue selected";
     pub const QUEUE_CLOSED: &str = "Queue is currently closed";
 }
 
@@ -32,20 +32,15 @@ impl Bot {
     pub fn create(&mut self, name: &str) -> ChannelResult {
         self.queue = Some(Queue::new(name));
         self.chat
-            .send_msg(&format!("Queue \"{}\" has been created and loaded", name))
+            .send_msg(&format!("Queue \"{}\" has been created and selected", name))
     }
 
-    pub fn unload(&mut self) -> ChannelResult {
-        self.queue = None;
-        self.chat.send_msg("Queue has been unloaded")
-    }
-
-    pub fn load(&mut self, name: &str) -> ChannelResult {
+    pub fn select(&mut self, name: &str) -> ChannelResult {
         match Queue::load(name) {
             Some(queue) => {
                 self.queue = Some(queue);
                 Ok(self.chat.send_msg(&format!(
-                    "Queue \"{}\" is now loaded",
+                    "Queue \"{}\" is now selected",
                     self.queue.as_ref().unwrap().name
                 ))?)
             }

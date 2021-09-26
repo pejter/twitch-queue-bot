@@ -42,11 +42,10 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
         "!close" => mod_command!(modlist, user, { bot.close() }),
         "!reset" => mod_command!(modlist, user, { bot.reset() }),
         "!save" => mod_command!(modlist, user, { bot.save() }),
-        "!unload" => mod_command!(modlist, user, { bot.unload() }),
-        command if command.starts_with("!load") => mod_command!(modlist, user, {
+        command if command.starts_with("!select") => mod_command!(modlist, user, {
             match command.split_once(" ") {
                 None => bot.chat.send_msg("You must provide a name for the queue"),
-                Some(name) => bot.load(name.1),
+                Some(name) => bot.select(name.1),
             }
         }),
         command if command.starts_with("!create") => mod_command!(modlist, user, {

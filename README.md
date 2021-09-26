@@ -21,13 +21,12 @@ and the following **mod** commands:
   - This **will not** clear the queue
 - !create *name* -> Create a new queue with the rest of the message as its name
   - if the queue already exists this will overwrite it with a new one
-- !unload -> Unload the current queue
-- !load *name* -> Load the queue with a specific name (case insensitive)
+- !select *name* -> Select the queue with a specific name (case insensitive)
   - queue must exist, use !create beforehand
-  - only one queue may be loaded at a time
-  - loading a queue will discard the current one, make sure to !save first if you don't want to lose data
+  - only one queue may be selected at a time
 - !save -> Save the queue to disk in it's current state
   - This won't close the queue!
+  - The queues are persisted automatically unless the bot crashes or is forcibly killed.
 
 Features
 ---------
