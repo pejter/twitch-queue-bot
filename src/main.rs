@@ -1,18 +1,10 @@
-#![feature(result_into_ok_or_err)]
-
 mod config;
 mod lib;
 mod termcolor;
 
-use lib::{Bot, ChannelResult, ChatConfig};
-use std::io::BufRead;
-use std::net::Shutdown;
+use lib::{Bot, ChannelResult, ChatClient, ChatConfig};
 
 use termcolor::Color;
-
-// If someone with a nickname of length 1 sent us a message it would look like this
-// Which means we're safe to skip at least this many characters for message detection
-const TWITCH_ENVELOPE_LEN: usize = ":_!_@_.tmi.twitch.tv PRIVMSG #_ ".len();
 
 macro_rules! mod_command {
     ($modlist:tt,$user:tt,$b:block) => {
@@ -59,42 +51,6 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
     }
 }
 
-fn message_handler(bot: &mut Bot, msg: String) {
-    match msg.as_str() {
-        "PING :tmi.twitch.tv" => bot
-            .chat
-            .send_raw("PONG :tmi.twitch.tv")
-            .expect("Unable to respond to PING"),
-        line if line.contains("PRIVMSG") => {
-            let user = {
-                let idx = line.find('!').unwrap();
-                &line[1..idx]
-            };
-            let msg = {
-                let line = &line[TWITCH_ENVELOPE_LEN..];
-                let idx = line.find(':').unwrap();
-                &line[idx + 1..]
-            };
-            if let Err(e) = handle_command(bot, user, msg) {
-                println!("Couldn't send message: {}", e);
-            };
-        }
-        line if line.contains("NOTICE") => {
-            let prefix = "The moderators of this channel are: ";
-            if let Some(idx) = line.find(prefix) {
-                let modlist = line[idx + prefix.len()..].split(", ");
-                bot.chat.set_modlist(modlist);
-                println!("Moderators: {:#?}", bot.chat.modlist)
-            }
-        }
-        line if line.contains("USERSTATE") => {}
-
-        _ => {
-            println!("> {}", msg)
-        }
-    }
-}
-
 fn main() {
     colorprintln!(Color::Green, "Reading config");
     let config = config::read().unwrap();
@@ -111,11 +67,10 @@ fn main() {
     colorprintln!(Color::Green, "Creating bot");
     let mut bot = Bot::new(ChatConfig::new(oauth_token, bot_username, channel_name)).unwrap();
 
-    let (socket, sender) = bot.chat.sockets();
+    let sockets = bot.chat.sockets();
     ctrlc::set_handler(move || {
         println!("Received Ctrl-C, exiting...");
-        socket.shutdown(Shutdown::Read).ok();
-        sender.send(None).ok();
+        ChatClient::disconnect(&sockets).ok();
     })
     .expect("Error setting Ctrl-C handler");
 
@@ -126,13 +81,23 @@ fn main() {
         ))
         .expect("Unable to send greeting");
 
-    let reader = bot.chat.get_reader().expect("Getting chat reader failed");
-    for result in reader.lines() {
-        match result {
-            Ok(line) => message_handler(&mut bot, line),
-            Err(error) => {
-                colorprintln!(Color::Red, "Error while reading from socket: {}", error);
+    loop {
+        match bot.chat.recv_msg() {
+            Err(e) => {
+                println!("Error receiving message: {}", e);
+                break;
             }
+            Ok(option) => match option {
+                Some((user, msg)) => {
+                    if let Err(e) = handle_command(&mut bot, &user, &msg) {
+                        println!("Couldn't send message: {}", e);
+                    };
+                }
+                None => {
+                    println!("Chat closed, exiting...");
+                    break;
+                }
+            },
         }
     }
     colorprintln!(Color::Green, "Bot exited");

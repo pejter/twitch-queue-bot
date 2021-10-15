@@ -1,19 +1,30 @@
 use super::ratelimit::Limiter;
 use std::collections::HashSet;
-use std::io;
-use std::io::prelude::*;
+use std::error::Error;
 use std::net::TcpStream;
 use std::sync::mpsc::{channel, SendError, Sender};
 use std::sync::Arc;
 use std::time::Duration;
+use websocket::receiver::Reader;
+use websocket::{ClientBuilder, OwnedMessage, WebSocketResult};
 
-pub type ChannelContent = Option<String>;
+pub type ChannelContent = OwnedMessage;
 pub type ChannelError = SendError<ChannelContent>;
 pub type ChannelResult = Result<(), ChannelError>;
+type ClosingResources = Sender<ChannelContent>;
 
 const INIT_MESSAGES: usize = 2; // How many JOIN/PASS messages we send in the init
 const USER_RATE_LIMIT: usize = 20;
 const MOD_RATE_LIMIT: usize = 100;
+const PING_INTERVAL: u64 = 60;
+
+// If someone with a nickname of length 1 sent us a message it would look like this
+// Which means we're safe to skip at least this many characters for message detection
+const TWITCH_ENVELOPE_LEN: usize = ":_!_@_.tmi.twitch.tv PRIVMSG #_ ".len();
+
+// The length of the mods message without the channel name
+const MODS_ENVELOPE_LEN: usize =
+    ":tmi.twitch.tv NOTICE # :The moderators of this channel are: ".len();
 
 #[derive(Clone)]
 pub struct ChatConfig {
@@ -33,7 +44,7 @@ impl ChatConfig {
 }
 
 pub struct ChatClient {
-    socket: TcpStream,
+    receiver: Reader<TcpStream>,
     sender: Sender<ChannelContent>,
     limiter: Arc<Limiter>,
     config: ChatConfig,
@@ -41,73 +52,162 @@ pub struct ChatClient {
 }
 
 impl ChatClient {
-    pub fn connect(config: ChatConfig) -> io::Result<Self> {
-        let socket = TcpStream::connect("irc.chat.twitch.tv:6667")?;
-        let mut thread_socket = socket.try_clone()?;
-        let (sender, receiver) = channel();
+    pub fn disconnect(sockets: &ClosingResources) -> Result<(), Box<dyn Error>> {
+        Ok(sockets.send(OwnedMessage::Close(None))?)
+    }
+
+    pub fn connect(config: ChatConfig) -> WebSocketResult<Self> {
+        let mut ws = ClientBuilder::new("ws://irc-ws.chat.twitch.tv:80")
+            .unwrap()
+            .connect_insecure()?;
+
+        let auth = [
+            format!("PASS {}", config.oauth_token),
+            format!("NICK {}", config.bot_username),
+            format!("JOIN #{}", config.channel_name),
+            "CAP REQ :twitch.tv/commands".to_string(),
+            format!("PRIVMSG #{} :/mods", config.channel_name),
+        ];
+
+        for msg in auth {
+            ws.send_message(&OwnedMessage::Text(msg))?;
+        }
+
         let limiter = Arc::new(Limiter::new(
             USER_RATE_LIMIT,
             USER_RATE_LIMIT.saturating_sub(INIT_MESSAGES),
             Duration::from_secs(30),
         ));
 
-        let limiter_inner = Arc::clone(&limiter);
+        let (receiver, mut ws_sender) = ws.split()?;
+        let (sender, chan_receiver) = channel::<ChannelContent>();
+        let ping_sender = sender.clone();
+        let limiter_send = Arc::clone(&limiter);
+        std::thread::spawn(move || loop {
+            let d = Duration::from_secs(PING_INTERVAL);
+            std::thread::sleep(d);
+            ping_sender.send(OwnedMessage::Ping(Vec::new())).unwrap();
+        });
         std::thread::spawn(move || {
-            for msg in receiver.iter() {
+            for msg in chan_receiver.iter() {
                 match msg {
-                    Some(msg) => {
-                        limiter_inner.wait();
-                        thread_socket
-                            .write_all(format!("{}\n", msg).as_bytes())
-                            .expect("Sending message failed");
-                    }
-                    None => {
+                    OwnedMessage::Close(_) => {
                         println!("Sender thread exiting");
-                        break;
+                        ws_sender.send_message(&msg).ok();
+                        return;
+                    }
+                    _ => {
+                        limiter_send.wait();
+                        ws_sender.send_message(&msg).unwrap_or_else(|err| {
+                            println!("Send error: {}", err);
+                            ws_sender.send_message(&OwnedMessage::Close(None)).unwrap();
+                        });
                     }
                 }
             }
         });
 
-        let mut client = Self {
-            socket,
+        Ok(Self {
+            receiver,
             config,
             sender,
             limiter,
             modlist: HashSet::new(),
+        })
+    }
+
+    pub fn channel_name(&self) -> &str {
+        self.config.channel_name.as_str()
+    }
+
+    pub fn sockets(&self) -> ClosingResources {
+        self.sender.clone()
+    }
+
+    fn parse_privmsg(line: &str) -> (String, String) {
+        let user = {
+            let idx = line.find('!').unwrap();
+            &line[1..idx]
         };
+        let msg = {
+            let line = &line[TWITCH_ENVELOPE_LEN..];
+            let idx = line.find(':').unwrap();
+            &line[idx + 1..]
+        };
+        (user.to_owned(), msg.to_owned())
+    }
 
-        client.send_raw(&format!("PASS {}", client.config.oauth_token))?;
-        client.send_raw(&format!("NICK {}", client.config.bot_username))?;
-        client.send_raw(&format!("JOIN #{}", client.config.channel_name))?;
-        client.send_raw("CAP REQ :twitch.tv/commands")?;
-        client.send_raw(&format!("PRIVMSG #{} :/mods", client.config.channel_name))?;
+    fn parse_message(&mut self, msg: &str) -> Option<(String, String)> {
+        match msg.trim_end() {
+            _ if msg.starts_with(":tmi.twitch.tv 001") => {
+                println!("Connected successfully");
+            }
 
-        match client.socket.take_error().transpose() {
-            // This is a Result<io::Error, io::Error> because we read an error or failed reading
-            Some(error) => Err(error.into_ok_or_err()),
-            None => Ok(client),
+            "PING :tmi.twitch.tv" => {
+                println!("PONG!");
+                self.send_raw("PONG :tmi.twitch.tv")
+                    .expect("Unable to respond to PING");
+            }
+
+            line if line.contains("The moderators of this channel are: ") => {
+                let prefix_len = MODS_ENVELOPE_LEN + self.channel_name().len();
+                let modlist = line[prefix_len..].split(", ");
+                self.set_modlist(modlist);
+                println!("Moderators: {:#?}", self.modlist)
+            }
+
+            line if line.contains("PRIVMSG") => {
+                return Some(Self::parse_privmsg(line));
+            }
+            _ => {}
+        };
+        None
+    }
+
+    pub fn recv_msg(&mut self) -> Result<Option<(String, String)>, Box<dyn Error>> {
+        loop {
+            match self.receiver.recv_message() {
+                Ok(msg) => match msg {
+                    OwnedMessage::Close(_) => {
+                        self.sender.send(msg).ok();
+                        return Ok(None);
+                    }
+                    OwnedMessage::Ping(data) => self.sender.send(OwnedMessage::Pong(data))?,
+                    OwnedMessage::Pong(_) => {}
+                    OwnedMessage::Text(msg) => {
+                        let result = self.parse_message(&msg);
+                        if result.is_some() {
+                            return Ok(result);
+                        }
+                    }
+                    OwnedMessage::Binary(data) => {
+                        println!("Binary data {:?}", data);
+                        if let Ok(msg) = String::from_utf8(data) {
+                            println!("Decoded into: {}", msg);
+                            if let Some(result) = self.parse_message(&msg) {
+                                return Ok(Some(result));
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("Error reading from socket: {}", e);
+                    return Err(Box::new(e));
+                }
+            }
         }
     }
 
-    pub fn sockets(&self) -> (TcpStream, Sender<ChannelContent>) {
-        (self.socket.try_clone().unwrap(), self.sender.clone())
-    }
-
-    pub fn send_raw(&mut self, msg: &str) -> io::Result<()> {
-        self.socket.write_all(format!("{}\r\n", msg).as_bytes())
+    pub fn send_raw(&self, msg: &str) -> ChannelResult {
+        self.sender.send(OwnedMessage::Text(format!("{}\n", msg)))
     }
 
     pub fn send_msg(&self, msg: &str) -> ChannelResult {
         println!("< {}", msg);
-        self.sender.send(Some(format!(
-            "PRIVMSG #{} :{}",
+        self.sender.send(OwnedMessage::Text(format!(
+            "PRIVMSG #{} :{}\n",
             self.config.channel_name, msg
         )))
-    }
-
-    pub fn get_reader(&self) -> io::Result<io::BufReader<TcpStream>> {
-        Ok(io::BufReader::new(self.socket.try_clone()?))
     }
 
     pub fn set_modlist<'a>(&mut self, modlist: impl Iterator<Item = &'a str>) {
