@@ -2,7 +2,7 @@ mod config;
 mod lib;
 mod termcolor;
 
-use lib::{Bot, ChannelResult, ChatClient, ChatConfig};
+use lib::{chat::ChatMessage, Bot, ChannelResult, ChatClient, ChatConfig};
 
 use termcolor::Color;
 
@@ -88,11 +88,13 @@ fn main() {
                 break;
             }
             Ok(option) => match option {
-                Some((user, msg)) => {
-                    if let Err(e) = handle_command(&mut bot, &user, &msg) {
-                        println!("Couldn't send message: {}", e);
-                    };
-                }
+                Some(msg) => match msg {
+                    ChatMessage::UserText(user, text) => {
+                        if let Err(e) = handle_command(&mut bot, &user, &text) {
+                            println!("Couldn't send message: {}", e);
+                        };
+                    }
+                },
                 None => {
                     println!("Chat closed, exiting...");
                     break;

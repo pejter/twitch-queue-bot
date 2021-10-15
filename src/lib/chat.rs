@@ -26,6 +26,10 @@ const TWITCH_ENVELOPE_LEN: usize = ":_!_@_.tmi.twitch.tv PRIVMSG #_ ".len();
 const MODS_ENVELOPE_LEN: usize =
     ":tmi.twitch.tv NOTICE # :The moderators of this channel are: ".len();
 
+pub enum ChatMessage {
+    UserText(String, String),
+}
+
 #[derive(Clone)]
 pub struct ChatConfig {
     pub oauth_token: String,
@@ -92,7 +96,7 @@ impl ChatClient {
             for msg in chan_receiver.iter() {
                 match msg {
                     OwnedMessage::Close(_) => {
-                        println!("Sender thread exiting");
+                        println!("Sender thread exiting...");
                         ws_sender.send_message(&msg).ok();
                         return;
                     }
@@ -124,7 +128,7 @@ impl ChatClient {
         self.sender.clone()
     }
 
-    fn parse_privmsg(line: &str) -> (String, String) {
+    fn parse_privmsg(line: &str) -> ChatMessage {
         let user = {
             let idx = line.find('!').unwrap();
             &line[1..idx]
@@ -134,22 +138,22 @@ impl ChatClient {
             let idx = line.find(':').unwrap();
             &line[idx + 1..]
         };
-        (user.to_owned(), msg.to_owned())
+        ChatMessage::UserText(user.to_owned(), msg.to_owned())
     }
 
-    fn parse_message(&mut self, msg: &str) -> Option<(String, String)> {
+    fn parse_message(&mut self, msg: &str) -> Option<ChatMessage> {
         match msg.trim_end() {
-            _ if msg.starts_with(":tmi.twitch.tv 001") => {
-                println!("Connected successfully");
-            }
-
             "PING :tmi.twitch.tv" => {
                 println!("PONG!");
                 self.send_raw("PONG :tmi.twitch.tv")
                     .expect("Unable to respond to PING");
             }
 
-            line if line.contains("The moderators of this channel are: ") => {
+            _ if msg.starts_with(":tmi.twitch.tv 001") => {
+                println!("Connected successfully");
+            }
+
+            line if msg.contains("The moderators of this channel are: ") => {
                 let prefix_len = MODS_ENVELOPE_LEN + self.channel_name().len();
                 let modlist = line[prefix_len..].split(", ");
                 self.set_modlist(modlist);
@@ -164,7 +168,7 @@ impl ChatClient {
         None
     }
 
-    pub fn recv_msg(&mut self) -> Result<Option<(String, String)>, Box<dyn Error>> {
+    pub fn recv_msg(&mut self) -> Result<Option<ChatMessage>, Box<dyn Error>> {
         loop {
             match self.receiver.recv_message() {
                 Ok(msg) => match msg {
