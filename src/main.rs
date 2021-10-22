@@ -83,22 +83,16 @@ fn main() {
 
     loop {
         match bot.chat.recv_msg() {
-            Err(e) => {
-                println!("Error receiving message: {}", e);
+            Err(_) => {
                 break;
             }
-            Ok(option) => match option {
-                Some(msg) => match msg {
-                    ChatMessage::UserText(user, text) => {
-                        if let Err(e) = handle_command(&mut bot, &user, &text) {
-                            println!("Couldn't send message: {}", e);
-                        };
-                    }
-                },
-                None => {
-                    println!("Chat closed, exiting...");
-                    break;
+            Ok(msg) => match msg {
+                ChatMessage::UserText(user, text) => {
+                    if let Err(e) = handle_command(&mut bot, &user, &text) {
+                        println!("Couldn't send message: {}", e);
+                    };
                 }
+                other => println!("{:?}", other),
             },
         }
     }
