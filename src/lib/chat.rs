@@ -5,7 +5,9 @@ use std::net::TcpStream;
 use std::sync::mpsc::{channel, Receiver, RecvError, SendError, Sender};
 use std::sync::Arc;
 use std::time::Duration;
-use websocket::{receiver::Reader, ClientBuilder, OwnedMessage, WebSocketResult};
+use websocket::{
+    receiver::Reader, sender::Writer, sync::Client, ClientBuilder, OwnedMessage, WebSocketResult,
+};
 
 pub type ChannelContent = OwnedMessage;
 pub type ChannelError = SendError<ChannelContent>;
@@ -41,6 +43,47 @@ impl ChatConfig {
             oauth_token: oauth_token.to_owned(),
             bot_username: bot_username.to_lowercase(),
             channel_name: channel_name.to_lowercase(),
+        }
+    }
+}
+
+struct ChatWriter {
+    receiver: Receiver<ChannelContent>,
+    sender: Writer<TcpStream>,
+    limiter: Arc<Limiter>,
+}
+
+impl ChatWriter {
+    pub fn new(
+        receiver: Receiver<ChannelContent>,
+        sender: Writer<TcpStream>,
+        limiter: Arc<Limiter>,
+    ) -> Self {
+        Self {
+            receiver,
+            sender,
+            limiter,
+        }
+    }
+
+    pub fn write(&mut self) {
+        for msg in self.receiver.iter() {
+            match msg {
+                OwnedMessage::Close(_) => {
+                    println!("Sender exiting...");
+                    self.sender.send_message(&msg).ok();
+                    return;
+                }
+                _ => {
+                    self.limiter.wait();
+                    self.sender.send_message(&msg).unwrap_or_else(|err| {
+                        println!("Send error: {}", err);
+                        self.sender
+                            .send_message(&OwnedMessage::Close(None))
+                            .unwrap();
+                    });
+                }
+            }
         }
     }
 }
@@ -159,6 +202,8 @@ impl ChatClient {
     }
 
     pub fn connect(config: ChatConfig) -> WebSocketResult<Self> {
+        // Use insecure adress until TlsStream implements Splittable
+        // https://github.com/websockets-rs/rust-websocket/issues/150
         let mut ws = ClientBuilder::new("ws://irc-ws.chat.twitch.tv:80")
             .unwrap()
             .connect_insecure()?;
@@ -176,49 +221,35 @@ impl ChatClient {
             ws.send_message(&OwnedMessage::Text(msg))?;
         }
 
-        let (ws_receiver, mut ws_sender) = ws.split()?;
+        let (ws_receiver, ws_sender) = ws.split()?;
         let (sender, chan_receiver) = channel::<ChannelContent>();
         let (chan_sender, receiver) = channel::<ChatMessage>();
-        let ping_sender = sender.clone();
-        let mods_sender = sender.clone();
-        let mut reader = ChatReader::new(ws_receiver, chan_sender, sender.clone());
-        std::thread::spawn(move || reader.read());
-        std::thread::spawn(move || loop {
-            let d = Duration::from_secs(PING_INTERVAL);
-            std::thread::sleep(d);
-            ping_sender.send(OwnedMessage::Ping(Vec::new())).unwrap();
-        });
-        std::thread::spawn(move || loop {
-            let d = Duration::from_secs(MODS_INTERVAL);
-            std::thread::sleep(d);
-            mods_sender
-                .send(OwnedMessage::Text(modlist_request.clone()))
-                .unwrap();
-        });
 
         let limiter = Arc::new(Limiter::new(
             USER_RATE_LIMIT,
             USER_RATE_LIMIT.saturating_sub(INIT_MESSAGES).into(),
             Duration::from_secs(30),
         ));
-        let send_limiter = limiter.clone();
-        std::thread::spawn(move || {
-            for msg in chan_receiver.iter() {
-                match msg {
-                    OwnedMessage::Close(_) => {
-                        println!("Sender exiting...");
-                        ws_sender.send_message(&msg).ok();
-                        return;
-                    }
-                    _ => {
-                        send_limiter.wait();
-                        ws_sender.send_message(&msg).unwrap_or_else(|err| {
-                            println!("Send error: {}", err);
-                            ws_sender.send_message(&OwnedMessage::Close(None)).unwrap();
-                        });
-                    }
-                }
-            }
+        let mut writer = ChatWriter::new(chan_receiver, ws_sender, limiter.clone());
+        std::thread::spawn(move || writer.write());
+
+        let mut reader = ChatReader::new(ws_receiver, chan_sender, sender.clone());
+        std::thread::spawn(move || reader.read());
+
+        let ping_sender = sender.clone();
+        std::thread::spawn(move || loop {
+            let d = Duration::from_secs(PING_INTERVAL);
+            std::thread::sleep(d);
+            ping_sender.send(OwnedMessage::Ping(Vec::new())).unwrap();
+        });
+
+        let mods_sender = sender.clone();
+        std::thread::spawn(move || loop {
+            let d = Duration::from_secs(MODS_INTERVAL);
+            std::thread::sleep(d);
+            mods_sender
+                .send(OwnedMessage::Text(modlist_request.clone()))
+                .unwrap();
         });
 
         Ok(Self {
