@@ -2,7 +2,7 @@ mod config;
 mod lib;
 mod termcolor;
 
-use lib::{chat::ChatMessage, Bot, ChannelResult, ChatClient, ChatConfig};
+use lib::{chat::ChatMessage, Bot, ChatClient, ChatConfig, SendResult};
 
 use termcolor::Color;
 
@@ -18,7 +18,7 @@ macro_rules! mod_command {
     };
 }
 
-fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> ChannelResult {
+fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> SendResult {
     println!("{}: {}", user, msg);
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
@@ -92,7 +92,6 @@ fn main() {
                         println!("Couldn't send message: {}", e);
                     };
                 }
-                other => println!("{:?}", other),
             },
         }
     }

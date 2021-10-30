@@ -1,8 +1,9 @@
 pub mod chat;
+mod irc;
 mod queue;
 mod ratelimit;
 
-pub use chat::{ChannelResult, ChatClient, ChatConfig};
+pub use chat::{ChatClient, ChatConfig, SendResult};
 pub use queue::{PushError, Queue};
 use std::error::Error;
 
@@ -24,18 +25,18 @@ impl Bot {
             .unwrap();
 
         Ok(Self {
-            chat: ChatClient::connect(config)?,
+            chat: ChatClient::new(config)?,
             queue: None,
         })
     }
 
-    pub fn create(&mut self, name: &str) -> ChannelResult {
+    pub fn create(&mut self, name: &str) -> SendResult {
         self.queue = Some(Queue::new(name));
         self.chat
             .send_msg(&format!("Queue \"{}\" has been created and selected", name))
     }
 
-    pub fn select(&mut self, name: &str) -> ChannelResult {
+    pub fn select(&mut self, name: &str) -> SendResult {
         match Queue::load(name) {
             Some(queue) => {
                 self.queue = Some(queue);
@@ -50,7 +51,7 @@ impl Bot {
         }
     }
 
-    pub fn save(&mut self) -> ChannelResult {
+    pub fn save(&mut self) -> SendResult {
         match &self.queue {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
@@ -61,7 +62,7 @@ impl Bot {
         }
     }
 
-    pub fn open(&mut self) -> ChannelResult {
+    pub fn open(&mut self) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.open() {
@@ -71,7 +72,7 @@ impl Bot {
         }
     }
 
-    pub fn close(&mut self) -> ChannelResult {
+    pub fn close(&mut self) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.close() {
@@ -81,7 +82,7 @@ impl Bot {
         }
     }
 
-    pub fn clear(&mut self) -> ChannelResult {
+    pub fn clear(&mut self) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
@@ -91,7 +92,7 @@ impl Bot {
         }
     }
 
-    pub fn join(&mut self, user: &str) -> ChannelResult {
+    pub fn join(&mut self, user: &str) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.is_open {
@@ -116,7 +117,7 @@ impl Bot {
         }
     }
 
-    pub fn leave(&mut self, user: &str) -> ChannelResult {
+    pub fn leave(&mut self, user: &str) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.remove(user) {
@@ -130,7 +131,7 @@ impl Bot {
         }
     }
 
-    pub fn reset(&mut self) -> ChannelResult {
+    pub fn reset(&mut self) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
@@ -140,7 +141,7 @@ impl Bot {
         }
     }
 
-    pub fn next(&mut self) -> ChannelResult {
+    pub fn next(&mut self) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.shift() {
@@ -160,7 +161,7 @@ impl Bot {
         }
     }
 
-    pub fn position(&self, user: &str) -> ChannelResult {
+    pub fn position(&self, user: &str) -> SendResult {
         match &self.queue {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.find(user) {
@@ -175,7 +176,7 @@ impl Bot {
         }
     }
 
-    pub fn length(&self) -> ChannelResult {
+    pub fn length(&self) -> SendResult {
         match &self.queue {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => self
@@ -184,7 +185,7 @@ impl Bot {
         }
     }
 
-    pub fn list(&self) -> ChannelResult {
+    pub fn list(&self) -> SendResult {
         fn format_list<T: AsRef<str> + std::fmt::Display>(l: &[T]) -> String {
             l.iter()
                 .enumerate()
