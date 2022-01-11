@@ -1,7 +1,8 @@
-Twitch queue bot
-================
+# Twitch queue bot
 
-The twitch bot supports the following **user** commands:
+## Quickstart
+
+### User commands
 
 - !join -> Join the queue
   - The queue must be open to be able to join it
@@ -9,7 +10,7 @@ The twitch bot supports the following **user** commands:
 - !position -> Display current queue position
 - !length -> Display number of people in queue
 
-and the following **mod** commands:
+### Mod commands
 
 - !next -> Advance the queue by one and displays the new head of the queue
   - This will add the player to the player history which will make them unable to join again until a reset
@@ -28,14 +29,15 @@ and the following **mod** commands:
   - This won't close the queue!
   - The queues are persisted automatically unless the bot crashes or is forcibly killed.
 
-Features
----------
+## Features
 
 - Queue management
 - Persistence
 - Player history
+- Guaranteed order of message processing
 
-TODO
------
+## Hosting
 
-- [ ] Join/leave message batching
+## Limitation
+
+- Single channel operation
