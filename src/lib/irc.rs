@@ -1,39 +1,46 @@
 use super::ratelimit::Limiter;
-use std::sync::mpsc::{channel, Receiver, SendError, Sender};
-use std::sync::Arc;
-use std::time::Duration;
-use websocket::{
-    receiver::Reader, sender::Writer, sync::stream::TcpStream, ClientBuilder, OwnedMessage,
-    WebSocketResult,
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
 };
+use std::sync::Arc;
+use tokio::{
+    net::TcpStream,
+    runtime::Runtime,
+    sync::mpsc::{channel, error::SendError, Receiver, Sender},
+    task::JoinHandle,
+    time::{sleep, Duration},
+};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 const INIT_MESSAGES: u32 = 2; // How many JOIN/PASS messages we send in the init
 const PING_INTERVAL: u64 = 60;
 const CLIENT_NOTICE: &str = ":tmi.twitch.tv NOTICE * :";
 
+pub type IRCTasks = Vec<JoinHandle<()>>;
 pub type IRCMessage = String;
-pub type ChannelContent = OwnedMessage;
+pub type ChannelContent = Message;
 pub type ChannelError = SendError<ChannelContent>;
 pub type ChannelResult = Result<(), ChannelError>;
 
 pub struct IRCClient {
     pub sender: Sender<ChannelContent>,
     pub limiter: Arc<Limiter>,
+    pub futures: IRCTasks,
 }
 
 impl IRCClient {
     pub fn connect(
+        rt: &Runtime,
         bot_username: &str,
         channel_name: &str,
         oauth_token: &str,
         chan_sender: Sender<IRCMessage>,
         message_limit: u32,
-    ) -> WebSocketResult<Self> {
-        // Use insecure adress until TlsStream implements Splittable
-        // https://github.com/websockets-rs/rust-websocket/issues/150
-        let mut ws = ClientBuilder::new("ws://irc-ws.chat.twitch.tv:80")
-            .unwrap()
-            .connect_insecure()?;
+    ) -> Self {
+        let (mut ws, _) = rt
+            .block_on(connect_async("wss://irc-ws.chat.twitch.tv:443"))
+            .expect("Failed to connect to TMI");
 
         let auth = [
             format!("PASS {}", oauth_token),
@@ -42,12 +49,15 @@ impl IRCClient {
             "CAP REQ :twitch.tv/commands".to_string(),
         ];
 
-        for msg in auth {
-            ws.send_message(&OwnedMessage::Text(msg))?;
-        }
-
-        let (ws_receiver, ws_sender) = ws.split()?;
-        let (sender, chan_receiver) = channel::<ChannelContent>();
+        rt.block_on(async {
+            for msg in auth {
+                ws.feed(Message::Text(msg)).await.unwrap();
+            }
+            ws.flush().await.unwrap();
+        });
+        let (ws_sender, ws_receiver) = ws.split();
+        let (sender, chan_receiver) = channel::<ChannelContent>(100);
+        let mut futures: IRCTasks = Vec::new();
 
         let limiter = Arc::new(Limiter::new(
             message_limit,
@@ -59,23 +69,35 @@ impl IRCClient {
             sender: ws_sender,
             limiter: limiter.clone(),
         };
-        std::thread::spawn(move || writer.write());
+        futures.push(rt.spawn(async move {
+            writer.write().await;
+            println!("IRC Writer exited");
+        }));
 
         let mut reader = IRCReader {
             receiver: ws_receiver,
             sender: chan_sender,
             echo: sender.clone(),
         };
-        std::thread::spawn(move || reader.read());
+        futures.push(rt.spawn(async move {
+            reader.read().await;
+            println!("IRC Reader exited");
+        }));
 
         let ping_sender = sender.clone();
-        std::thread::spawn(move || loop {
+        futures.push(rt.spawn(async move {
             let d = Duration::from_secs(PING_INTERVAL);
-            std::thread::sleep(d);
-            ping_sender.send(OwnedMessage::Ping(Vec::new())).unwrap();
-        });
+            while ping_sender.send(Message::Ping(Vec::new())).await.is_ok() {
+                sleep(d).await;
+            }
+            println!("PING exited");
+        }));
 
-        Ok(Self { sender, limiter })
+        Self {
+            sender,
+            limiter,
+            futures,
+        }
     }
 
     pub fn get_sender(&self) -> Sender<ChannelContent> {
@@ -83,33 +105,35 @@ impl IRCClient {
     }
 
     pub fn send(&self, msg: String) -> ChannelResult {
-        self.sender.send(OwnedMessage::Text(msg))
+        self.sender.blocking_send(Message::Text(msg))
     }
 }
 
 pub struct IRCWriter {
     receiver: Receiver<ChannelContent>,
-    sender: Writer<TcpStream>,
+    sender: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     limiter: Arc<Limiter>,
 }
 
 impl IRCWriter {
-    pub fn write(&mut self) {
-        for msg in self.receiver.iter() {
+    pub async fn write(&mut self) {
+        while let Some(msg) = self.receiver.recv().await {
             match msg {
-                OwnedMessage::Close(_) => {
+                Message::Close(_) => {
                     println!("Sender exiting...");
-                    self.sender.send_message(&msg).ok();
+                    self.sender.send(msg).await.ok();
+                    self.receiver.close();
                     return;
                 }
                 _ => {
                     self.limiter.wait();
-                    self.sender.send_message(&msg).unwrap_or_else(|err| {
-                        println!("Send error: {}", err);
-                        self.sender
-                            .send_message(&OwnedMessage::Close(None))
-                            .unwrap();
-                    });
+                    match self.sender.send(msg).await {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("Send error: {}", err);
+                            self.sender.send(Message::Close(None)).await.unwrap();
+                        }
+                    };
                 }
             }
         }
@@ -119,15 +143,16 @@ impl IRCWriter {
 pub struct IRCReader {
     echo: Sender<ChannelContent>,
     sender: Sender<IRCMessage>,
-    receiver: Reader<TcpStream>,
+    receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
 }
 
 impl IRCReader {
-    fn extract_msg(&self, msg: String) -> Option<IRCMessage> {
+    async fn extract_msg(&self, msg: String) -> Option<IRCMessage> {
         match msg.trim_end() {
             "PING :tmi.twitch.tv" => {
                 self.echo
-                    .send(OwnedMessage::Text("PONG :tmi.twitch.tv".into()))
+                    .send(Message::Text("PONG :tmi.twitch.tv".into()))
+                    .await
                     .expect("Unable to respond to PING");
             }
 
@@ -145,32 +170,35 @@ impl IRCReader {
         None
     }
 
-    pub fn read(&mut self) {
-        loop {
-            match self.receiver.recv_message() {
+    pub async fn read(&mut self) {
+        while let Some(msg) = self.receiver.next().await {
+            match msg {
                 Ok(msg) => match msg {
-                    OwnedMessage::Close(_) => {
-                        self.echo.send(msg).ok();
+                    Message::Frame(_) => {
+                        panic!("Got Message:Frame!");
+                    }
+                    Message::Close(_) => {
+                        self.echo.send(msg).await.ok();
                         println!("Receiver exiting...");
                         return;
                     }
-                    OwnedMessage::Ping(data) => {
-                        self.echo.send(OwnedMessage::Pong(data)).unwrap();
+                    Message::Ping(data) => {
+                        self.echo.send(Message::Pong(data)).await.unwrap();
                     }
-                    OwnedMessage::Pong(_) => {}
-                    OwnedMessage::Text(msg) => {
-                        if let Some(result) = self.extract_msg(msg) {
-                            if self.sender.send(result).is_err() {
+                    Message::Pong(_) => {}
+                    Message::Text(msg) => {
+                        if let Some(result) = self.extract_msg(msg).await {
+                            if self.sender.send(result).await.is_err() {
                                 return;
                             };
                         }
                     }
-                    OwnedMessage::Binary(data) => {
+                    Message::Binary(data) => {
                         println!("Binary data {:?}", data);
                         if let Ok(msg) = String::from_utf8(data) {
                             println!("Decoded into: {}", msg);
-                            if let Some(result) = self.extract_msg(msg) {
-                                if self.sender.send(result).is_err() {
+                            if let Some(result) = self.extract_msg(msg).await {
+                                if self.sender.send(result).await.is_err() {
                                     return;
                                 };
                             }
@@ -179,7 +207,7 @@ impl IRCReader {
                 },
                 Err(e) => {
                     println!("Error reading from socket: {}", e);
-                    self.echo.send(OwnedMessage::Close(None)).ok();
+                    self.echo.send(Message::Close(None)).await.ok();
                     return;
                 }
             }

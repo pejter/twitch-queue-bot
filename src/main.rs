@@ -5,6 +5,7 @@ mod termcolor;
 use lib::{chat::ChatMessage, Bot, ChatClient, ChatConfig, SendResult};
 
 use termcolor::Color;
+use tokio::{runtime::Builder, signal};
 
 macro_rules! mod_command {
     ($modlist:tt,$user:tt,$b:block) => {
@@ -65,14 +66,29 @@ fn main() {
         .expect("CHANNEL_NAME must be present in the config");
 
     colorprintln!(Color::Green, "Creating bot");
-    let mut bot = Bot::new(ChatConfig::new(oauth_token, bot_username, channel_name)).unwrap();
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
-    let sockets = bot.chat.sockets();
-    ctrlc::set_handler(move || {
-        println!("Received Ctrl-C, exiting...");
-        ChatClient::disconnect(&sockets).ok();
-    })
-    .expect("Error setting Ctrl-C handler");
+    let mut bot = Bot::new(
+        &rt,
+        ChatConfig::new(oauth_token, bot_username, channel_name),
+    );
+
+    let sockets = bot.chat.closing();
+    std::thread::spawn(move || {
+        rt.block_on(async move {
+            match signal::ctrl_c().await {
+                Ok(()) => {
+                    println!("Received Ctrl-C, exiting...");
+                    ChatClient::disconnect(&sockets).await.ok();
+                    sockets.closed().await;
+                }
+                Err(err) => {
+                    eprintln!("Unable to listen for shutdown signal: {}", err);
+                    // we also shut down in case of error
+                }
+            }
+        })
+    });
 
     bot.chat
         .send_msg(&format!(
@@ -83,10 +99,10 @@ fn main() {
 
     loop {
         match bot.chat.recv_msg() {
-            Err(_) => {
+            None => {
                 break;
             }
-            Ok(msg) => match msg {
+            Some(msg) => match msg {
                 ChatMessage::UserText(user, text) => {
                     if let Err(e) = handle_command(&mut bot, &user, &text) {
                         println!("Couldn't send message: {}", e);

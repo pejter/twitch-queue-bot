@@ -5,7 +5,7 @@ mod ratelimit;
 
 pub use chat::{ChatClient, ChatConfig, SendResult};
 pub use queue::{PushError, Queue};
-use std::error::Error;
+use tokio::runtime::Runtime;
 
 mod messages {
     pub const QUEUE_NOT_LOADED: &str = "No Queue selected";
@@ -18,16 +18,16 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub fn new(config: ChatConfig) -> Result<Self, Box<dyn Error>> {
+    pub fn new(rt: &Runtime, config: ChatConfig) -> Self {
         std::fs::DirBuilder::new()
             .recursive(true)
             .create(queue::DATA_DIR)
             .unwrap();
 
-        Ok(Self {
-            chat: ChatClient::new(config)?,
+        Self {
+            chat: ChatClient::new(rt, config),
             queue: None,
-        })
+        }
     }
 
     pub fn create(&mut self, name: &str) -> SendResult {

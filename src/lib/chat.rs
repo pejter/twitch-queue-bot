@@ -1,9 +1,11 @@
 use super::irc::{ChannelContent, ChannelResult, IRCClient, IRCMessage};
 use std::collections::HashSet;
-use std::error::Error;
-use std::sync::mpsc::{channel, Receiver, RecvError, Sender};
-use std::time::Duration;
-use websocket::{OwnedMessage, WebSocketResult};
+use tokio::{
+    runtime::Runtime,
+    sync::mpsc::{channel, Receiver, Sender},
+    time::{sleep, Duration},
+};
+use tokio_tungstenite::tungstenite::Message;
 
 type ClosingResources = Sender<ChannelContent>;
 pub type SendResult = ChannelResult;
@@ -46,46 +48,51 @@ pub struct ChatClient {
 }
 
 impl ChatClient {
-    pub fn disconnect(sockets: &ClosingResources) -> Result<(), Box<dyn Error>> {
-        Ok(sockets.send(OwnedMessage::Close(None))?)
+    pub async fn disconnect(sockets: &ClosingResources) -> SendResult {
+        sockets.send(Message::Close(None)).await
     }
 
-    pub fn new(config: ChatConfig) -> WebSocketResult<Self> {
-        let (chan_sender, receiver) = channel::<IRCMessage>();
+    pub fn new(rt: &Runtime, config: ChatConfig) -> Self {
+        let (chan_sender, receiver) = channel::<IRCMessage>(100);
 
         let irc = IRCClient::connect(
+            rt,
             &config.bot_username,
             &config.channel_name,
             &config.oauth_token,
             chan_sender,
             USER_RATE_LIMIT,
-        )?;
+        );
 
         let modlist_request = format!("PRIVMSG #{} :/mods", config.channel_name);
         let mods_sender = irc.get_sender();
-        std::thread::spawn(move || loop {
+        rt.spawn(async move {
             let d = Duration::from_secs(MODS_INTERVAL);
-            mods_sender
-                .send(OwnedMessage::Text(modlist_request.clone()))
-                .unwrap();
-            std::thread::sleep(d);
+            while mods_sender
+                .send(Message::Text(modlist_request.clone()))
+                .await
+                .is_ok()
+            {
+                sleep(d).await;
+            }
+            println!("/mods exiting");
         });
 
-        Ok(Self {
+        Self {
             irc,
             config,
             receiver,
             modlist: HashSet::new(),
-        })
+        }
     }
 
-    pub fn sockets(&self) -> ClosingResources {
+    pub fn closing(&self) -> ClosingResources {
         self.irc.get_sender()
     }
 
-    pub fn recv_msg(&mut self) -> Result<ChatMessage, RecvError> {
-        loop {
-            match self.receiver.recv()? {
+    pub fn recv_msg(&mut self) -> Option<ChatMessage> {
+        while let Some(line) = self.receiver.blocking_recv() {
+            match line {
                 line if line.contains("PRIVMSG") => {
                     let user = {
                         let idx = line.find('!').unwrap();
@@ -96,7 +103,7 @@ impl ChatClient {
                         let idx = line.find(':').unwrap();
                         &line[idx + 1..]
                     };
-                    return Ok(ChatMessage::UserText(user.to_owned(), msg.to_owned()));
+                    return Some(ChatMessage::UserText(user.to_owned(), msg.to_owned()));
                 }
 
                 line if line.contains("NOTICE") => {
@@ -111,6 +118,7 @@ impl ChatClient {
                 _ => {}
             }
         }
+        None
     }
 
     pub fn send_msg(&self, msg: &str) -> ChannelResult {
