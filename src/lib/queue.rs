@@ -63,7 +63,7 @@ impl Queue {
             .truncate(true)
             .open(filename)
             .unwrap();
-        serde_json::to_writer(file, self).unwrap()
+        serde_json::to_writer(file, self).unwrap();
     }
 }
 
@@ -91,25 +91,24 @@ impl Queue {
     }
 
     pub fn clear(&mut self) {
-        self.list.clear()
+        self.list.clear();
     }
 
     pub fn open(&mut self) -> Result<(), ()> {
-        match self.is_open {
-            true => Err(()),
-            false => {
-                self.is_open = true;
-                Ok(())
-            }
+        if self.is_open {
+            Err(())
+        } else {
+            self.is_open = true;
+            Ok(())
         }
     }
+
     pub fn close(&mut self) -> Result<(), ()> {
-        match self.is_open {
-            false => Err(()),
-            true => {
-                self.is_open = false;
-                Ok(())
-            }
+        if self.is_open {
+            self.is_open = false;
+            Ok(())
+        } else {
+            Err(())
         }
     }
 
@@ -128,13 +127,12 @@ impl Queue {
     }
 
     pub fn shift(&mut self) -> Option<String> {
-        match self.list.is_empty() {
-            true => None,
-            false => {
-                let user = self.list.remove(0);
-                self.played.insert(user.clone());
-                Some(user)
-            }
+        if self.list.is_empty() {
+            None
+        } else {
+            let user = self.list.remove(0);
+            self.played.insert(user.clone());
+            Some(user)
         }
     }
 

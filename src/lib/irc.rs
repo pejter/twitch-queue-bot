@@ -118,23 +118,17 @@ pub struct IRCWriter {
 impl IRCWriter {
     pub async fn write(&mut self) {
         while let Some(msg) = self.receiver.recv().await {
-            match msg {
-                Message::Close(_) => {
-                    println!("Sender exiting...");
-                    self.sender.send(msg).await.ok();
-                    self.receiver.close();
-                    return;
-                }
-                _ => {
-                    self.limiter.wait();
-                    match self.sender.send(msg).await {
-                        Ok(_) => {}
-                        Err(err) => {
-                            println!("Send error: {err}");
-                            self.sender.send(Message::Close(None)).await.unwrap();
-                        }
-                    };
-                }
+            if msg.is_close() {
+                println!("Sender exiting...");
+                self.sender.send(msg).await.ok();
+                self.receiver.close();
+                return;
+            }
+
+            self.limiter.wait();
+            if let Err(err) = self.sender.send(msg).await {
+                println!("Send error: {err}");
+                self.sender.send(Message::Close(None)).await.unwrap();
             }
         }
     }

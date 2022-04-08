@@ -13,10 +13,7 @@ pub struct Limiter {
 
 impl Limiter {
     pub fn new(capacity: u32, tokens: i64, interval: Duration) -> Self {
-        if capacity == 0 {
-            panic!("Capacity must be positive!")
-        }
-
+        assert!(capacity != 0, "Capacity must be positive!");
         Self {
             interval,
             window: RwLock::new(VecDeque::new()),

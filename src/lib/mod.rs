@@ -95,22 +95,25 @@ impl Bot {
     pub fn join(&mut self, user: &str) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
-            Some(queue) => match queue.is_open {
-                false => Ok(self.chat.send_msg(messages::QUEUE_CLOSED)?),
-                true => match queue.push(user) {
-                    Err(PushError::Played) => self.chat.send_msg(&format!(
-                        "@{user}: You've already played. Wait until queue reset to join again.",
-                    )),
-                    Err(PushError::Present(idx)) => self.chat.send_msg(&format!(
-                        "@{user}: You're already in queue at position {}",
-                        idx + 1
-                    )),
-                    Ok(idx) => self.chat.send_msg(&format!(
-                        "@{user}: You've been added to the queue at position {}",
-                        idx + 1
-                    )),
-                },
-            },
+            Some(queue) => {
+                if queue.is_open {
+                    match queue.push(user) {
+                        Err(PushError::Played) => self.chat.send_msg(&format!(
+                            "@{user}: You've already played. Wait until queue reset to join again.",
+                        )),
+                        Err(PushError::Present(idx)) => self.chat.send_msg(&format!(
+                            "@{user}: You're already in queue at position {}",
+                            idx + 1
+                        )),
+                        Ok(idx) => self.chat.send_msg(&format!(
+                            "@{user}: You've been added to the queue at position {}",
+                            idx + 1
+                        )),
+                    }
+                } else {
+                    Ok(self.chat.send_msg(messages::QUEUE_CLOSED)?)
+                }
+            }
         }
     }
 
@@ -191,9 +194,9 @@ impl Bot {
         match &self.queue {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
+                const MAX_LIST: usize = 5;
                 let l = queue.list();
                 println!("Logging full list: {l:?}");
-                const MAX_LIST: usize = 5;
                 match l.len() {
                     0 => self.chat.send_msg("The queue is currently empty"),
                     1..=MAX_LIST => self

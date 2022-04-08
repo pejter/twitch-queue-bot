@@ -128,13 +128,15 @@ impl ChatClient {
     }
 
     pub fn set_modlist(&mut self, modlist: impl Iterator<Item = String>) {
-        let chan = &self.config.channel_name;
+        let chan = self.config.channel_name.clone();
         self.modlist.clear();
-        self.modlist.insert(chan.to_owned());
+        self.modlist.insert(chan);
         self.modlist.extend(modlist);
-        match self.modlist.contains(&self.config.bot_username) {
-            true => self.irc.limiter.set_capacity(MOD_RATE_LIMIT),
-            false => self.irc.limiter.set_capacity(USER_RATE_LIMIT),
-        }
+        let cap = if self.modlist.contains(&self.config.bot_username) {
+            MOD_RATE_LIMIT
+        } else {
+            USER_RATE_LIMIT
+        };
+        self.irc.limiter.set_capacity(cap);
     }
 }

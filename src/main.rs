@@ -87,7 +87,7 @@ fn main() {
                     // we also shut down in case of error
                 }
             }
-        })
+        });
     });
 
     bot.chat
