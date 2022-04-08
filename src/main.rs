@@ -20,7 +20,7 @@ macro_rules! mod_command {
 }
 
 fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> SendResult {
-    println!("{}: {}", user, msg);
+    println!("{user}: {msg}");
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => bot.join(user),
@@ -83,7 +83,7 @@ fn main() {
                     sockets.closed().await;
                 }
                 Err(err) => {
-                    eprintln!("Unable to listen for shutdown signal: {}", err);
+                    eprintln!("Unable to listen for shutdown signal: {err}");
                     // we also shut down in case of error
                 }
             }
@@ -92,8 +92,7 @@ fn main() {
 
     bot.chat
         .send_msg(&format!(
-            "Hello there gamers! {} is now in chat.",
-            bot_username
+            "Hello there gamers! {bot_username} is now in chat.",
         ))
         .expect("Unable to send greeting");
 
@@ -105,7 +104,7 @@ fn main() {
             Some(msg) => match msg {
                 ChatMessage::UserText(user, text) => {
                     if let Err(e) = handle_command(&mut bot, &user, &text) {
-                        println!("Couldn't send message: {}", e);
+                        println!("Couldn't send message: {e}");
                     };
                 }
             },

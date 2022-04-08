@@ -43,9 +43,9 @@ impl IRCClient {
             .expect("Failed to connect to TMI");
 
         let auth = [
-            format!("PASS {}", oauth_token),
-            format!("NICK {}", bot_username),
-            format!("JOIN #{}", channel_name),
+            format!("PASS {oauth_token}"),
+            format!("NICK {bot_username}"),
+            format!("JOIN #{channel_name}"),
             "CAP REQ :twitch.tv/commands".to_string(),
         ];
 
@@ -130,7 +130,7 @@ impl IRCWriter {
                     match self.sender.send(msg).await {
                         Ok(_) => {}
                         Err(err) => {
-                            println!("Send error: {}", err);
+                            println!("Send error: {err}");
                             self.sender.send(Message::Close(None)).await.unwrap();
                         }
                     };
@@ -162,7 +162,7 @@ impl IRCReader {
 
             line => match msg.strip_prefix(CLIENT_NOTICE) {
                 Some(notice) => {
-                    print!("Notice: {}", notice);
+                    print!("Notice: {notice}");
                 }
                 None => return Some(line.to_owned()),
             },
@@ -194,9 +194,9 @@ impl IRCReader {
                         }
                     }
                     Message::Binary(data) => {
-                        println!("Binary data {:?}", data);
+                        println!("Binary data {data:?}");
                         if let Ok(msg) = String::from_utf8(data) {
-                            println!("Decoded into: {}", msg);
+                            println!("Decoded into: {msg}");
                             if let Some(result) = self.extract_msg(msg).await {
                                 if self.sender.send(result).await.is_err() {
                                     return;
@@ -206,7 +206,7 @@ impl IRCReader {
                     }
                 },
                 Err(e) => {
-                    println!("Error reading from socket: {}", e);
+                    println!("Error reading from socket: {e}");
                     self.echo.send(Message::Close(None)).await.ok();
                     return;
                 }

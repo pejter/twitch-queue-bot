@@ -122,9 +122,9 @@ impl ChatClient {
     }
 
     pub fn send_msg(&self, msg: &str) -> ChannelResult {
-        println!("< {}", msg);
-        self.irc
-            .send(format!("PRIVMSG #{} :{}\n", self.config.channel_name, msg))
+        println!("< {msg}");
+        let channel = &self.config.channel_name;
+        self.irc.send(format!("PRIVMSG #{channel} :{msg}\n"))
     }
 
     pub fn set_modlist(&mut self, modlist: impl Iterator<Item = String>) {

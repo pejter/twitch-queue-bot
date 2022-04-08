@@ -33,17 +33,17 @@ impl Bot {
     pub fn create(&mut self, name: &str) -> SendResult {
         self.queue = Some(Queue::new(name));
         self.chat
-            .send_msg(&format!("Queue \"{}\" has been created and selected", name))
+            .send_msg(&format!("Queue \"{name}\" has been created and selected"))
     }
 
     pub fn select(&mut self, name: &str) -> SendResult {
         match Queue::load(name) {
             Some(queue) => {
                 self.queue = Some(queue);
-                Ok(self.chat.send_msg(&format!(
-                    "Queue \"{}\" is now selected",
-                    self.queue.as_ref().unwrap().name
-                ))?)
+                let name = &self.queue.as_ref().unwrap().name;
+                Ok(self
+                    .chat
+                    .send_msg(&format!("Queue \"{name}\" is now selected"))?)
             }
             None => Ok(self
                 .chat
@@ -99,17 +99,14 @@ impl Bot {
                 false => Ok(self.chat.send_msg(messages::QUEUE_CLOSED)?),
                 true => match queue.push(user) {
                     Err(PushError::Played) => self.chat.send_msg(&format!(
-                        "@{}: You've already played. Wait until queue reset to join again.",
-                        user,
+                        "@{user}: You've already played. Wait until queue reset to join again.",
                     )),
                     Err(PushError::Present(idx)) => self.chat.send_msg(&format!(
-                        "@{}: You're already in queue at position {}",
-                        user,
+                        "@{user}: You're already in queue at position {}",
                         idx + 1
                     )),
                     Ok(idx) => self.chat.send_msg(&format!(
-                        "@{}: You've been added to the queue at position {}",
-                        user,
+                        "@{user}: You've been added to the queue at position {}",
                         idx + 1
                     )),
                 },
@@ -123,10 +120,8 @@ impl Bot {
             Some(queue) => match queue.remove(user) {
                 Ok(_) => self
                     .chat
-                    .send_msg(&format!("@{}: You've been removed from the queue", user)),
-                Err(_) => self
-                    .chat
-                    .send_msg(&format!("@{}: You were not queued", user)),
+                    .send_msg(&format!("@{user}: You've been removed from the queue")),
+                Err(_) => self.chat.send_msg(&format!("@{user}: You were not queued")),
             },
         }
     }
@@ -147,14 +142,14 @@ impl Bot {
             Some(queue) => match queue.shift() {
                 None => self.chat.send_msg("The queue is currently empty"),
                 Some(user) => {
-                    let next_msg = format!("@{} is next!", user);
+                    let next_msg = format!("@{user} is next!");
                     match queue.first() {
                         None => self
                             .chat
-                            .send_msg(&format!("{} That's the last one.", next_msg)),
+                            .send_msg(&format!("{next_msg} That's the last one.")),
                         Some(user) => self
                             .chat
-                            .send_msg(&format!("{} @{} is up after that.", next_msg, user)),
+                            .send_msg(&format!("{next_msg} @{user} is up after that.")),
                     }
                 }
             },
@@ -165,13 +160,12 @@ impl Bot {
         match &self.queue {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => match queue.find(user) {
-                Some(idx) => {
-                    self.chat
-                        .send_msg(&format!("@{} you are number {} in queue", user, idx + 1))
-                }
+                Some(idx) => self
+                    .chat
+                    .send_msg(&format!("@{user} you are number {} in queue", idx + 1)),
                 None => self
                     .chat
-                    .send_msg(&format!("@{}: You're not currently queued", user)),
+                    .send_msg(&format!("@{user}: You're not currently queued")),
             },
         }
     }
@@ -198,7 +192,7 @@ impl Bot {
             None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED)?),
             Some(queue) => {
                 let l = queue.list();
-                println!("Logging full list: {:?}", l);
+                println!("Logging full list: {l:?}");
                 const MAX_LIST: usize = 5;
                 match l.len() {
                     0 => self.chat.send_msg("The queue is currently empty"),
@@ -206,9 +200,7 @@ impl Bot {
                         .chat
                         .send_msg(&format!("People in queue: {}", format_list(l))),
                     n => self.chat.send_msg(&format!(
-                        "People in queue (first {} out of {}): {}",
-                        MAX_LIST,
-                        n,
+                        "People in queue (first {MAX_LIST} out of {n}): {}",
                         format_list(&l[..MAX_LIST])
                     )),
                 }
