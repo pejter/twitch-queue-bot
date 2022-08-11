@@ -5,7 +5,7 @@ use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
     time::{sleep, Duration},
 };
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::Message as WSMessage;
 
 type ClosingResources = Sender<ChannelContent>;
 pub type SendResult = ChannelResult;
@@ -19,18 +19,18 @@ const MODS_INTERVAL: u64 = 600;
 const TWITCH_ENVELOPE_LEN: usize = ":_!_@_.tmi.twitch.tv PRIVMSG #_ ".len();
 
 #[derive(Debug)]
-pub enum ChatMessage {
+pub enum Message {
     UserText(String, String),
 }
 
 #[derive(Clone)]
-pub struct ChatConfig {
+pub struct Config {
     pub oauth_token: String,
     pub bot_username: String,
     pub channel_name: String,
 }
 
-impl ChatConfig {
+impl Config {
     pub fn new(oauth_token: &str, bot_username: &str, channel_name: &str) -> Self {
         Self {
             oauth_token: oauth_token.to_owned(),
@@ -40,19 +40,19 @@ impl ChatConfig {
     }
 }
 
-pub struct ChatClient {
+pub struct Client {
     receiver: Receiver<IRCMessage>,
     irc: IRCClient,
-    config: ChatConfig,
+    config: Config,
     pub modlist: HashSet<String>,
 }
 
-impl ChatClient {
+impl Client {
     pub async fn disconnect(sockets: &ClosingResources) -> SendResult {
-        sockets.send(Message::Close(None)).await
+        sockets.send(WSMessage::Close(None)).await
     }
 
-    pub fn new(rt: &Runtime, config: ChatConfig) -> Self {
+    pub fn new(rt: &Runtime, config: Config) -> Self {
         let (chan_sender, receiver) = channel::<IRCMessage>(100);
 
         let irc = IRCClient::connect(
@@ -69,7 +69,7 @@ impl ChatClient {
         rt.spawn(async move {
             let d = Duration::from_secs(MODS_INTERVAL);
             while mods_sender
-                .send(Message::Text(modlist_request.clone()))
+                .send(WSMessage::Text(modlist_request.clone()))
                 .await
                 .is_ok()
             {
@@ -90,7 +90,7 @@ impl ChatClient {
         self.irc.get_sender()
     }
 
-    pub fn recv_msg(&mut self) -> Option<ChatMessage> {
+    pub fn recv_msg(&mut self) -> Option<Message> {
         while let Some(line) = self.receiver.blocking_recv() {
             match line {
                 line if line.contains("PRIVMSG") => {
@@ -103,7 +103,7 @@ impl ChatClient {
                         let idx = line.find(':').unwrap();
                         &line[idx + 1..]
                     };
-                    return Some(ChatMessage::UserText(user.to_owned(), msg.to_owned()));
+                    return Some(Message::UserText(user.to_owned(), msg.to_owned()));
                 }
 
                 line if line.contains("NOTICE") => {

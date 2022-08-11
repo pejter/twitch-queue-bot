@@ -55,7 +55,7 @@ pub fn get_code(color: &Color) -> &str {
 macro_rules! color {
     ($color : expr, $text:expr) => {{
 
-        let code = crate::termcolor::get_code(&$color);
+        let code = $crate::termcolor::get_code(&$color);
         if cfg!(windows){
             format!($text)
         } else {
@@ -63,7 +63,7 @@ macro_rules! color {
         }
     }};
     ($color : expr, $fmt:expr, $($args : tt) *) => {{
-        let code = crate::termcolor::get_code(&$color);
+        let code = $crate::termcolor::get_code(&$color);
         if cfg!(windows) {
             format!($fmt, $($args)*)
         } else {

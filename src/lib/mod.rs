@@ -3,7 +3,7 @@ mod irc;
 mod queue;
 mod ratelimit;
 
-pub use chat::{ChatClient, ChatConfig, SendResult};
+pub use chat::{Client, Config, SendResult};
 pub use queue::{PushError, Queue};
 use tokio::runtime::Runtime;
 
@@ -13,19 +13,19 @@ mod messages {
 }
 
 pub struct Bot {
-    pub chat: ChatClient,
+    pub chat: Client,
     pub queue: Option<Queue>,
 }
 
 impl Bot {
-    pub fn new(rt: &Runtime, config: ChatConfig) -> Self {
+    pub fn new(rt: &Runtime, config: Config) -> Self {
         std::fs::DirBuilder::new()
             .recursive(true)
             .create(queue::DATA_DIR)
             .unwrap();
 
         Self {
-            chat: ChatClient::new(rt, config),
+            chat: Client::new(rt, config),
             queue: None,
         }
     }

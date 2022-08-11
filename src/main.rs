@@ -2,7 +2,7 @@ mod config;
 mod lib;
 mod termcolor;
 
-use lib::{chat::ChatMessage, Bot, ChatClient, ChatConfig, SendResult};
+use lib::{chat::Message, Bot, Client, Config, SendResult};
 
 use termcolor::Color;
 use tokio::{runtime::Builder, signal};
@@ -68,10 +68,7 @@ fn main() {
     colorprintln!(Color::Green, "Creating bot");
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
-    let mut bot = Bot::new(
-        &rt,
-        ChatConfig::new(oauth_token, bot_username, channel_name),
-    );
+    let mut bot = Bot::new(&rt, Config::new(oauth_token, bot_username, channel_name));
 
     let sockets = bot.chat.closing();
     std::thread::spawn(move || {
@@ -79,7 +76,7 @@ fn main() {
             match signal::ctrl_c().await {
                 Ok(()) => {
                     println!("Received Ctrl-C, exiting...");
-                    ChatClient::disconnect(&sockets).await.ok();
+                    Client::disconnect(&sockets).await.ok();
                     sockets.closed().await;
                 }
                 Err(err) => {
@@ -102,7 +99,7 @@ fn main() {
                 break;
             }
             Some(msg) => match msg {
-                ChatMessage::UserText(user, text) => {
+                Message::UserText(user, text) => {
                     if let Err(e) = handle_command(&mut bot, &user, &text) {
                         println!("Couldn't send message: {e}");
                     };
