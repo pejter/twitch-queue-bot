@@ -1,8 +1,8 @@
+mod bot;
 mod config;
-mod lib;
 mod termcolor;
 
-use lib::{chat::Message, Bot, Client, Config, SendResult};
+use bot::{chat::Message, Bot, Client, Config, SendResult};
 
 use termcolor::Color;
 use tokio::{runtime::Builder, signal};
@@ -71,6 +71,7 @@ fn main() {
     let mut bot = Bot::new(&rt, Config::new(oauth_token, bot_username, channel_name));
 
     let sockets = bot.chat.closing();
+    // Side thread that will run our tokio runtime
     std::thread::spawn(move || {
         rt.block_on(async move {
             match signal::ctrl_c().await {
