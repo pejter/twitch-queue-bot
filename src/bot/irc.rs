@@ -8,7 +8,7 @@ use tokio::{
     net::TcpStream,
     runtime::Runtime,
     sync::mpsc::{channel, error::SendError, Receiver, Sender},
-    task::JoinHandle,
+    task::JoinSet,
     time::{sleep, Duration},
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
@@ -19,7 +19,7 @@ const PING_INTERVAL: u64 = 60;
 const CLIENT_NOTICE: &str = ":tmi.twitch.tv NOTICE * :";
 const TMI_ADDRESS: &str = "wss://irc-ws.chat.twitch.tv:443";
 
-pub type IRCTasks = Vec<JoinHandle<()>>;
+pub type IRCTasks = JoinSet<()>;
 pub type IRCMessage = String;
 pub type ChannelContent = Message;
 pub type ChannelError = SendError<ChannelContent>;
@@ -61,7 +61,7 @@ impl IRCClient {
         });
         let (ws_sender, ws_receiver) = ws.split();
         let (sender, chan_receiver) = channel::<ChannelContent>(100);
-        let mut futures: IRCTasks = Vec::new();
+        let mut futures: IRCTasks = JoinSet::new();
 
         debug!("Creating rate limiter");
         let limiter = Arc::new(Limiter::new(
@@ -76,11 +76,14 @@ impl IRCClient {
             sender: ws_sender,
             limiter: limiter.clone(),
         };
-        futures.spawn(async move {
-            debug!("Starting IRC writer");
-            writer.write().await;
-            info!("IRC Writer exited");
-        });
+        futures.spawn_on(
+            async move {
+                debug!("Starting IRC writer");
+                writer.write().await;
+                info!("IRC Writer exited");
+            },
+            rt.handle(),
+        );
 
         debug!("Creating IRC reader");
         let mut reader = IRCReader {
@@ -88,22 +91,28 @@ impl IRCClient {
             sender: chan_sender,
             echo: sender.clone(),
         };
-        futures.spawn(async move {
-            debug!("Starting IRC reader");
-            reader.read().await;
-            info!("IRC Reader exited");
-        });
+        futures.spawn_on(
+            async move {
+                debug!("Starting IRC reader");
+                reader.read().await;
+                info!("IRC Reader exited");
+            },
+            rt.handle(),
+        );
 
         let ping_sender = sender.clone();
-        futures.spawn(async move {
-            debug!("Starting IRC ping");
-            let d = Duration::from_secs(PING_INTERVAL);
-            while ping_sender.send(Message::Ping(Vec::new())).await.is_ok() {
-                debug!("Sent ping");
-                sleep(d).await;
-            }
-            info!("PING exited");
-        });
+        futures.spawn_on(
+            async move {
+                debug!("Starting IRC ping");
+                let d = Duration::from_secs(PING_INTERVAL);
+                while ping_sender.send(Message::Ping(Vec::new())).await.is_ok() {
+                    debug!("Sent ping");
+                    sleep(d).await;
+                }
+                info!("PING exited");
+            },
+            rt.handle(),
+        );
 
         Self {
             sender,
