@@ -14,3 +14,6 @@ tokio-tungstenite = { version = "0.18.0", features = [
     "rustls-tls-webpki-roots",
 ] }
 futures-util = "0.3.25"
+
+tracing = "^0.1"
+tracing-subscriber = { version = "^0.3", features = ["env-filter"] }

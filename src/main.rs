@@ -1,26 +1,26 @@
 mod bot;
 mod config;
-mod termcolor;
 
 use bot::{chat::Message, Bot, Client, Config, SendResult};
 
-use termcolor::Color;
 use tokio::{runtime::Builder, signal};
+use tracing::{error, info, warn};
 
 macro_rules! mod_command {
     ($modlist:tt,$user:tt,$b:block) => {
         match $modlist.contains($user) {
             true => $b,
             false => {
-                println!("User {} not authorised to perform mod commands", $user);
+                info!("User {} not authorised to perform mod commands", $user);
                 Ok(())
             }
         }
     };
 }
 
+#[tracing::instrument(skip(bot))]
 fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> SendResult {
-    println!("{user}: {msg}");
+    info!("{user}: {msg}");
     let modlist = &bot.chat.modlist;
     match msg.trim_end() {
         "!join" => bot.join(user),
@@ -53,7 +53,15 @@ fn handle_command(bot: &mut Bot, user: &str, msg: &str) -> SendResult {
 }
 
 fn main() {
-    colorprintln!(Color::Green, "Reading config");
+    tracing_subscriber::fmt()
+        .compact()
+        .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    info!("Reading config");
     let config = config::read().unwrap();
     let oauth_token = config
         .get("OAUTH_TOKEN")
@@ -65,7 +73,7 @@ fn main() {
         .get("CHANNEL_NAME")
         .expect("CHANNEL_NAME must be present in the config");
 
-    colorprintln!(Color::Green, "Creating bot");
+    info!("Creating bot");
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
     let mut bot = Bot::new(&rt, Config::new(oauth_token, bot_username, channel_name));
@@ -76,12 +84,12 @@ fn main() {
         rt.block_on(async move {
             match signal::ctrl_c().await {
                 Ok(()) => {
-                    println!("Received Ctrl-C, exiting...");
+                    info!("Received Ctrl-C, exiting...");
                     Client::disconnect(&sockets).await.ok();
                     sockets.closed().await;
                 }
                 Err(err) => {
-                    eprintln!("Unable to listen for shutdown signal: {err}");
+                    error!("Unable to listen for shutdown signal: {err}");
                     // we also shut down in case of error
                 }
             }
@@ -102,11 +110,11 @@ fn main() {
             Some(msg) => match msg {
                 Message::UserText(user, text) => {
                     if let Err(e) = handle_command(&mut bot, &user, &text) {
-                        println!("Couldn't send message: {e}");
+                        warn!("Couldn't send message: {e}");
                     };
                 }
             },
         }
     }
-    colorprintln!(Color::Green, "Bot exited");
+    info!("Bot exited");
 }

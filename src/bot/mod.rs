@@ -6,6 +6,7 @@ mod ratelimit;
 pub use chat::{Client, Config, SendResult};
 pub use queue::{PushError, Queue};
 use tokio::runtime::Runtime;
+use tracing::debug;
 
 mod messages {
     pub const QUEUE_NOT_LOADED: &str = "No Queue selected";
@@ -19,11 +20,13 @@ pub struct Bot {
 
 impl Bot {
     pub fn new(rt: &Runtime, config: Config) -> Self {
+        debug!("Creating data dir {}", queue::DATA_DIR);
         std::fs::DirBuilder::new()
             .recursive(true)
             .create(queue::DATA_DIR)
             .unwrap();
 
+        debug!("Creating bot");
         Self {
             chat: Client::new(rt, config),
             queue: None,

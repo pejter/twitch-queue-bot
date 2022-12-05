@@ -6,6 +6,7 @@ use tokio::{
     time::{sleep, Duration},
 };
 use tokio_tungstenite::tungstenite::Message as WSMessage;
+use tracing::{debug, info, warn};
 
 type ClosingResources = Sender<ChannelContent>;
 pub type SendResult = ChannelResult;
@@ -55,6 +56,7 @@ impl Client {
     pub fn new(rt: &Runtime, config: Config) -> Self {
         let (chan_sender, receiver) = channel::<IRCMessage>(100);
 
+        debug!("Connecting to IRC");
         let irc = IRCClient::connect(
             rt,
             &config.bot_username,
@@ -67,17 +69,20 @@ impl Client {
         let modlist_request = format!("PRIVMSG #{} :/mods", config.channel_name);
         let mods_sender = irc.get_sender();
         rt.spawn(async move {
+            info!("Starting mod check task");
             let d = Duration::from_secs(MODS_INTERVAL);
             while mods_sender
                 .send(WSMessage::Text(modlist_request.clone()))
                 .await
                 .is_ok()
             {
+                info!("Refreshing mod list");
                 sleep(d).await;
             }
-            println!("/mods exiting");
+            info!("/mods exiting");
         });
 
+        debug!("Creating chat client");
         Self {
             irc,
             config,
@@ -92,6 +97,7 @@ impl Client {
 
     pub fn recv_msg(&mut self) -> Option<Message> {
         while let Some(line) = self.receiver.blocking_recv() {
+            debug!("> {line}");
             match line {
                 line if line.contains("PRIVMSG") => {
                     let user = {
@@ -121,8 +127,9 @@ impl Client {
         None
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn send_msg(&self, msg: &str) -> ChannelResult {
-        println!("< {msg}");
+        info!("< {msg}");
         let channel = &self.config.channel_name;
         self.irc.send(format!("PRIVMSG #{channel} :{msg}\n"))
     }

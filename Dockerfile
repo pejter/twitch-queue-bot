@@ -13,5 +13,6 @@ STOPSIGNAL SIGINT
 COPY --from=builder /usr/local/cargo/bin/twitch-queue-bot /app
 COPY config.txt /
 
+ENV RUST_LOG=info
 VOLUME [ "/data" ]
 CMD ["/app"]
