@@ -13,6 +13,5 @@ Cargo.lock
 .vscode/
 
 # Application files
-
 config.txt
 data/
