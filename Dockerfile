@@ -1,10 +1,11 @@
 FROM rust:1.65.0-alpine as builder
 
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev git
 
 WORKDIR /code
 COPY . .
 
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN cargo install --path .
 
 FROM scratch
