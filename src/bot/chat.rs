@@ -49,10 +49,6 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn disconnect(sockets: &ClosingResources) -> SendResult {
-        sockets.send(WSMessage::Close(None)).await
-    }
-
     pub fn new(rt: &Runtime, config: Config) -> Self {
         let (chan_sender, receiver) = channel::<IRCMessage>(100);
 
@@ -93,6 +89,10 @@ impl Client {
 
     pub fn closing(&self) -> ClosingResources {
         self.irc.get_sender()
+    }
+
+    pub async fn disconnect(sockets: &ClosingResources) -> SendResult {
+        sockets.send(WSMessage::Close(None)).await
     }
 
     pub fn recv_msg(&mut self) -> Option<Message> {
