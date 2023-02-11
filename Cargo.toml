@@ -13,7 +13,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.18.0", features = [
     "rustls-tls-webpki-roots",
 ] }
-futures-util = "0.3.25"
+futures-util = "0.3.26"
 
 tracing = "^0.1"
 tracing-subscriber = { version = "^0.3", features = ["env-filter"] }
