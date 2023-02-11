@@ -48,7 +48,7 @@ impl Queue {
                 Ok(list) => list,
                 Err(error) => match error.kind() {
                     ErrorKind::NotFound => return None,
-                    _ => panic!("Error loading queue file: {}", error),
+                    _ => panic!("Error loading queue file: {error}"),
                 },
             })
             .unwrap(),

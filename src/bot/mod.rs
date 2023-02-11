@@ -50,7 +50,7 @@ impl Bot {
             }
             None => Ok(self
                 .chat
-                .send_msg(&format!("A queue named {} doesn't exist", name))?),
+                .send_msg(&format!("A queue named {name} doesn't exist"))?),
         }
     }
 
