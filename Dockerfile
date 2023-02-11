@@ -1,3 +1,4 @@
+# syntax = docker/dockerfile:1
 FROM rust:1.67.0-alpine as builder
 
 RUN apk add --no-cache musl-dev git
@@ -5,8 +6,10 @@ RUN apk add --no-cache musl-dev git
 WORKDIR /code
 COPY . .
 
+ENV CARGO_TARGET_DIR=/var/cache/cargo
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN cargo install --path .
+RUN --mount=type=cache,target=${CARGO_TARGET_DIR} \
+    cargo install --path .
 
 FROM scratch
 STOPSIGNAL SIGINT
