@@ -62,6 +62,7 @@ impl Client {
             USER_RATE_LIMIT,
         );
 
+        let modlist = HashSet::from([config.channel_name.clone()]);
         let modlist_request = format!("PRIVMSG #{} :/mods", config.channel_name);
         let mods_sender = irc.get_sender();
         rt.spawn(async move {
@@ -83,7 +84,7 @@ impl Client {
             irc,
             config,
             receiver,
-            modlist: HashSet::new(),
+            modlist,
         }
     }
 
