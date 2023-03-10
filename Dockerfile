@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:1
-FROM rust:1.67.1-alpine as builder
+FROM rust:1.68.0-alpine as builder
 
 RUN apk add --no-cache musl-dev git
 
