@@ -12,7 +12,7 @@ pub type SendResult = Result<(), IRCError>;
 
 #[derive(Debug)]
 pub enum Message {
-    UserText(String, String),
+    UserText(bool, String, String),
 }
 
 #[derive(Clone)]
@@ -68,7 +68,13 @@ impl Client {
             debug!("> {line:?}");
             match line {
                 ServerMessage::Privmsg(msg) => {
-                    return Some(Message::UserText(msg.sender.login, msg.message_text));
+                    let user = msg.sender.login;
+                    let channel = msg.channel_login;
+                    let mod_tag = msg.source.tags.0.get("mod");
+                    debug!(?mod_tag);
+                    let text = msg.message_text;
+                    let is_mod = user == channel || mod_tag == Some(&Some(String::from("1")));
+                    return Some(Message::UserText(is_mod, user, text));
                 }
                 ServerMessage::Whisper(msg) => {
                     info!("> Whisper ({}): {}", msg.sender.login, msg.message_text)

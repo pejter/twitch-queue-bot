@@ -27,9 +27,8 @@ macro_rules! mod_command {
 }
 
 #[tracing::instrument(skip(bot))]
-fn handle_command(bot: &mut Bot, channel: &str, user: &str, msg: &str) -> SendResult {
+fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendResult {
     info!("{user}: {msg}");
-    let is_mod = user.to_lowercase() == channel.to_lowercase();
     match msg.trim_end() {
         "!join" => bot.join(user),
         "!leave" => bot.leave(user),
@@ -126,8 +125,8 @@ fn main() {
                 break;
             }
             Some(msg) => match msg {
-                Message::UserText(user, text) => {
-                    if let Err(e) = handle_command(&mut bot, channel_name, &user, &text) {
+                Message::UserText(is_mod, user, text) => {
+                    if let Err(e) = handle_command(&mut bot, is_mod, &user, &text) {
                         warn!("Couldn't send message: {e}");
                     };
                 }
