@@ -1,10 +1,9 @@
 pub mod chat;
 mod queue;
 
-pub use chat::{Client, Config, SendResult};
+pub use chat::{Client as ChatClient, Config, Message, Reader, SendError, SendResult};
 pub use queue::{PushError, Queue};
-use tokio::runtime::Handle;
-use tracing::debug;
+use tracing::{debug, warn};
 
 mod messages {
     pub const QUEUE_NOT_LOADED: &str = "No Queue selected";
@@ -19,12 +18,12 @@ mod messages {
 }
 
 pub struct Bot {
-    pub chat: Client,
+    pub chat: ChatClient,
     pub queue: Option<Queue>,
 }
 
 impl Bot {
-    pub fn new(rt: Handle, config: Config) -> Self {
+    pub fn new(config: Config) -> Self {
         debug!("Creating data dir {}", queue::DATA_DIR);
         std::fs::DirBuilder::new()
             .recursive(true)
@@ -33,164 +32,194 @@ impl Bot {
 
         debug!("Creating bot");
         Self {
-            chat: Client::new(rt, config),
+            chat: ChatClient::new(config),
             queue: None,
         }
     }
 
-    pub fn create(&mut self, name: &str) -> SendResult {
-        self.queue = Some(Queue::new(name));
-        self.chat
-            .send_msg(format!("Queue \"{name}\" has been created and selected"))
+    pub async fn recv_msg(&mut self) -> Option<Message> {
+        self.chat.recv_msg().await
     }
 
-    pub fn select(&mut self, name: &str) -> SendResult {
+    pub async fn send_msg(&self, msg: String) -> SendResult {
+        match self.chat.send_msg(msg).await {
+            Err(SendError::ClientClosed) => {
+                warn!("Client has been closed, will not be sent");
+                Ok(())
+            }
+            other => other,
+        }
+    }
+
+    pub async fn create(&mut self, name: &str) -> SendResult {
+        self.queue = Some(Queue::new(name));
+        self.send_msg(format!("Queue \"{name}\" has been created and selected"))
+            .await
+    }
+
+    pub async fn select(&mut self, name: &str) -> SendResult {
         match Queue::load(name) {
             Some(queue) => {
                 self.queue = Some(queue);
                 let name = &self.queue.as_ref().unwrap().name;
                 Ok(self
-                    .chat
-                    .send_msg(format!("Queue \"{name}\" is now selected"))?)
+                    .send_msg(format!("Queue \"{name}\" is now selected"))
+                    .await?)
             }
             None => Ok(self
-                .chat
-                .send_msg(format!("A queue named {name} doesn't exist"))?),
+                .send_msg(format!("A queue named {name} doesn't exist"))
+                .await?),
         }
     }
 
-    pub fn save(&mut self) -> SendResult {
+    pub async fn save(&mut self) -> SendResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => {
                 queue.save();
-                self.chat.send_msg(format!("Queue {} saved", queue.name))?;
+                self.send_msg(format!("Queue {} saved", queue.name)).await?;
                 Ok(())
             }
         }
     }
 
-    pub fn open(&mut self) -> SendResult {
+    pub async fn open(&mut self) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.open() {
-                Err(_) => Ok(self.chat.send_msg(messages::QUEUE_OPEN_ERROR.into())?),
-                Ok(_) => Ok(self.chat.send_msg(messages::QUEUE_OPEN.into())?),
+                Err(_) => Ok(self.send_msg(messages::QUEUE_OPEN_ERROR.into()).await?),
+                Ok(_) => Ok(self.send_msg(messages::QUEUE_OPEN.into()).await?),
             },
         }
     }
 
-    pub fn close(&mut self) -> SendResult {
+    pub async fn close(&mut self) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.close() {
-                Err(_) => Ok(self.chat.send_msg(messages::QUEUE_CLOSE_ERROR.into())?),
-                Ok(_) => Ok(self.chat.send_msg(messages::QUEUE_CLOSE.into())?),
+                Err(_) => Ok(self.send_msg(messages::QUEUE_CLOSE_ERROR.into()).await?),
+                Ok(_) => Ok(self.send_msg(messages::QUEUE_CLOSE.into()).await?),
             },
         }
     }
 
-    pub fn clear(&mut self) -> SendResult {
+    pub async fn clear(&mut self) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => {
                 queue.clear();
-                self.chat.send_msg(messages::QUEUE_CLEAR.into())
+                self.send_msg(messages::QUEUE_CLEAR.into()).await
             }
         }
     }
 
-    pub fn join(&mut self, user: &str) -> SendResult {
+    pub async fn join(&mut self, user: &str) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => {
                 if queue.is_open {
                     match queue.push(user) {
-                        Err(PushError::Played) => self.chat.send_msg(format!(
+                        Err(PushError::Played) => {
+                            self.send_msg(format!(
                             "@{user}: You've already played. Wait until queue reset to join again.",
-                        )),
-                        Err(PushError::Present(idx)) => self.chat.send_msg(format!(
-                            "@{user}: You're already in queue at position {}",
-                            idx + 1
-                        )),
-                        Ok(idx) => self.chat.send_msg(format!(
-                            "@{user}: You've been added to the queue at position {}",
-                            idx + 1
-                        )),
+                        ))
+                            .await
+                        }
+                        Err(PushError::Present(idx)) => {
+                            self.send_msg(format!(
+                                "@{user}: You're already in queue at position {}",
+                                idx + 1
+                            ))
+                            .await
+                        }
+                        Ok(idx) => {
+                            self.send_msg(format!(
+                                "@{user}: You've been added to the queue at position {}",
+                                idx + 1
+                            ))
+                            .await
+                        }
                     }
                 } else {
-                    Ok(self.chat.send_msg(messages::QUEUE_CLOSED.into())?)
+                    Ok(self.send_msg(messages::QUEUE_CLOSED.into()).await?)
                 }
             }
         }
     }
 
-    pub fn leave(&mut self, user: &str) -> SendResult {
+    pub async fn leave(&mut self, user: &str) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.remove(user) {
-                Ok(_) => self
-                    .chat
-                    .send_msg(format!("@{user}: You've been removed from the queue")),
-                Err(_) => self.chat.send_msg(format!("@{user}: You were not queued")),
+                Ok(_) => {
+                    self.send_msg(format!("@{user}: You've been removed from the queue"))
+                        .await
+                }
+                Err(_) => self.send_msg(format!("@{user}: You were not queued")).await,
             },
         }
     }
 
-    pub fn reset(&mut self) -> SendResult {
+    pub async fn reset(&mut self) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => {
                 queue.reset();
-                self.chat.send_msg(messages::PLAYER_HISTORY_RESET.into())
+                self.send_msg(messages::PLAYER_HISTORY_RESET.into()).await
             }
         }
     }
 
-    pub fn next(&mut self) -> SendResult {
+    pub async fn next(&mut self) -> SendResult {
         match self.queue.as_mut() {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.shift() {
-                None => self.chat.send_msg(messages::QUEUE_EMPTY.into()),
+                None => self.send_msg(messages::QUEUE_EMPTY.into()).await,
                 Some(user) => {
                     let next_msg = format!("@{user} is next!");
                     match queue.first() {
-                        None => self
-                            .chat
-                            .send_msg(format!("{next_msg} That's the last one.")),
-                        Some(user) => self
-                            .chat
-                            .send_msg(format!("{next_msg} @{user} is up after that.")),
+                        None => {
+                            self.send_msg(format!("{next_msg} That's the last one."))
+                                .await
+                        }
+                        Some(user) => {
+                            let user = user.to_owned();
+                            self.send_msg(format!("{next_msg} @{user} is up after that."))
+                                .await
+                        }
                     }
                 }
             },
         }
     }
 
-    pub fn position(&self, user: &str) -> SendResult {
+    pub async fn position(&self, user: &str) -> SendResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.find(user) {
-                Some(idx) => self
-                    .chat
-                    .send_msg(format!("@{user} you are number {} in queue", idx + 1)),
-                None => self
-                    .chat
-                    .send_msg(format!("@{user}: You're not currently queued")),
+                Some(idx) => {
+                    self.send_msg(format!("@{user} you are number {} in queue", idx + 1))
+                        .await
+                }
+                None => {
+                    self.send_msg(format!("@{user}: You're not currently queued"))
+                        .await
+                }
             },
         }
     }
 
-    pub fn length(&self) -> SendResult {
+    pub async fn length(&self) -> SendResult {
         match &self.queue {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
-            Some(queue) => self
-                .chat
-                .send_msg(format!("There are {} people in queue", queue.len())),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
+            Some(queue) => {
+                self.send_msg(format!("There are {} people in queue", queue.len()))
+                    .await
+            }
         }
     }
 
-    pub fn list(&self) -> SendResult {
+    pub async fn list(&self) -> SendResult {
         fn format_list<T: AsRef<str> + std::fmt::Display>(l: &[T]) -> String {
             l.iter()
                 .enumerate()
@@ -200,20 +229,24 @@ impl Bot {
         }
 
         match &self.queue {
-            None => Ok(self.chat.send_msg(messages::QUEUE_NOT_LOADED.into())?),
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => {
                 const MAX_LIST: usize = 5;
                 let l = queue.list();
                 println!("Logging full list: {l:?}");
                 match l.len() {
-                    0 => self.chat.send_msg(messages::QUEUE_EMPTY.into()),
-                    1..=MAX_LIST => self
-                        .chat
-                        .send_msg(format!("People in queue: {}", format_list(l))),
-                    n => self.chat.send_msg(format!(
-                        "People in queue (first {MAX_LIST} out of {n}): {}",
-                        format_list(&l[..MAX_LIST])
-                    )),
+                    0 => self.send_msg(messages::QUEUE_EMPTY.into()).await,
+                    1..=MAX_LIST => {
+                        self.send_msg(format!("People in queue: {}", format_list(l)))
+                            .await
+                    }
+                    n => {
+                        self.send_msg(format!(
+                            "People in queue (first {MAX_LIST} out of {n}): {}",
+                            format_list(&l[..MAX_LIST])
+                        ))
+                        .await
+                    }
                 }
             }
         }

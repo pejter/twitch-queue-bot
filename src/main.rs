@@ -1,15 +1,10 @@
 mod bot;
 mod config;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use bot::{Bot, Config, Message, SendResult};
 
-use bot::{chat::Message, Bot, Config, SendResult};
-
-use tokio::{runtime::Builder, signal};
-use tracing::{debug, error, info, warn};
+use tokio::signal;
+use tracing::{debug, info, warn};
 
 macro_rules! mod_command {
     ($is_mod:tt,$user:tt,$b:block) => {
@@ -27,35 +22,37 @@ macro_rules! mod_command {
 }
 
 #[tracing::instrument(skip(bot))]
-fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendResult {
+async fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendResult {
     info!("{user}: {msg}");
     match msg.trim_end() {
-        "!join" => bot.join(user),
-        "!leave" => bot.leave(user),
-        "!position" => bot.position(user),
-        "!length" => bot.length(),
+        "!join" => bot.join(user).await,
+        "!leave" => bot.leave(user).await,
+        "!position" => bot.position(user).await,
+        "!length" => bot.length().await,
         // Mod commands
-        "!next" => mod_command!(is_mod, user, { bot.next() }),
-        "!list" => mod_command!(is_mod, user, { bot.list() }),
-        "!clear" => mod_command!(is_mod, user, { bot.clear() }),
-        "!open" => mod_command!(is_mod, user, { bot.open() }),
-        "!close" => mod_command!(is_mod, user, { bot.close() }),
-        "!reset" => mod_command!(is_mod, user, { bot.reset() }),
-        "!save" => mod_command!(is_mod, user, { bot.save() }),
+        "!next" => mod_command!(is_mod, user, { bot.next().await }),
+        "!list" => mod_command!(is_mod, user, { bot.list().await }),
+        "!clear" => mod_command!(is_mod, user, { bot.clear().await }),
+        "!open" => mod_command!(is_mod, user, { bot.open().await }),
+        "!close" => mod_command!(is_mod, user, { bot.close().await }),
+        "!reset" => mod_command!(is_mod, user, { bot.reset().await }),
+        "!save" => mod_command!(is_mod, user, { bot.save().await }),
         command if command.starts_with("!select") => mod_command!(is_mod, user, {
             match command.split_once(' ') {
-                None => bot
-                    .chat
-                    .send_msg("You must provide a name for the queue".into()),
-                Some(name) => bot.select(name.1),
+                None => {
+                    bot.send_msg("You must provide a name for the queue".into())
+                        .await
+                }
+                Some(name) => bot.select(name.1).await,
             }
         }),
         command if command.starts_with("!create") => mod_command!(is_mod, user, {
             match command.split_once(' ') {
-                None => bot
-                    .chat
-                    .send_msg("You must provide a name for the queue".into()),
-                Some(name) => bot.create(name.1),
+                None => {
+                    bot.send_msg("You must provide a name for the queue".into())
+                        .await
+                }
+                Some(name) => bot.create(name.1).await,
             }
         }),
         // Not a command
@@ -63,7 +60,8 @@ fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendRes
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     tracing_subscriber::fmt()
         .compact()
         .with_target(false)
@@ -84,49 +82,37 @@ fn main() {
         .get("CHANNEL_NAME")
         .expect("CHANNEL_NAME must be present in the config");
 
-    let rt = Builder::new_current_thread().enable_all().build().unwrap();
-    let rt_handle = rt.handle().clone();
+    info!("Creating bot");
+    let mut bot = Bot::new(Config::new(oauth_token, bot_username, channel_name));
 
-    let closed = Arc::new(AtomicBool::new(false));
-    // Side thread that will run our tokio runtime
-    std::thread::spawn({
-        let closed = closed.clone();
-        move || {
-            rt.block_on(async move {
-                match signal::ctrl_c().await {
-                    Ok(()) => {
-                        info!("Received Ctrl-C, exiting...");
-                        closed.store(true, Ordering::SeqCst);
-                    }
-                    Err(err) => {
-                        error!("Unable to listen for shutdown signal: {err}");
-                        // we also shut down in case of error
-                    }
-                }
-            });
+    let closed = bot.chat.closed.clone();
+    tokio::spawn(async move {
+        match signal::ctrl_c().await {
+            Ok(()) => {
+                info!("Received Ctrl-C, exiting...");
+                *closed.write().await = true;
+                info!("Chat closed");
+            }
+            Err(err) => {
+                panic!("Unable to listen for shutdown signal: {err}");
+            }
         }
     });
 
-    info!("Creating bot");
-    let mut bot = Bot::new(
-        rt_handle,
-        Config::new(oauth_token, bot_username, channel_name),
-    );
+    bot.send_msg(format!(
+        "Hello there gamers! {bot_username} is now in chat.",
+    ))
+    .await
+    .expect("Unable to send greeting");
 
-    bot.chat
-        .send_msg(format!(
-            "Hello there gamers! {bot_username} is now in chat.",
-        ))
-        .expect("Unable to send greeting");
-
-    while !closed.load(Ordering::Relaxed) {
-        match bot.chat.recv_msg() {
+    loop {
+        match bot.recv_msg().await {
             None => {
                 break;
             }
             Some(msg) => match msg {
                 Message::UserText(is_mod, user, text) => {
-                    if let Err(e) = handle_command(&mut bot, is_mod, &user, &text) {
+                    if let Err(e) = handle_command(&mut bot, is_mod, &user, &text).await {
                         warn!("Couldn't send message: {e}");
                     };
                 }
