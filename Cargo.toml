@@ -10,7 +10,7 @@ rust-version = "1.69"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
-twitch-irc = { version = "5.0.0", features = [
+twitch-irc = { version = "5.0.1", features = [
     "transport-ws-rustls-webpki-roots",
 ], default-features = false }
 
