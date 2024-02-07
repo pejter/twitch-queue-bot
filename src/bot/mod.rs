@@ -1,7 +1,7 @@
 pub mod chat;
 mod queue;
 
-pub use chat::{Client as ChatClient, Config, Message, Reader, SendError, SendResult};
+pub use chat::{Client as ChatClient, Config, Message, SendError, SendResult};
 pub use queue::{PushError, Queue};
 use tracing::{debug, warn};
 
