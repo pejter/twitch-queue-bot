@@ -21,38 +21,48 @@ macro_rules! mod_command {
     };
 }
 
+const CMD_PREFIX: char = '!';
+
 #[tracing::instrument(skip(bot))]
 async fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendResult {
     info!("{user}: {msg}");
-    match msg.trim_end() {
-        "!join" => bot.join(user).await,
-        "!leave" => bot.leave(user).await,
-        "!position" => bot.position(user).await,
-        "!length" => bot.length().await,
+    let msg = match msg.strip_prefix(CMD_PREFIX) {
+        None => return Ok(()),
+        Some(msg) => msg.trim_end(),
+    };
+    let (cmd, args) = match msg.split_once(' ') {
+        None => (msg, None),
+        Some((cmd, args)) => (cmd, Some(args)),
+    };
+    match (cmd, args) {
+        ("join", _) => bot.join(user).await,
+        ("leave", _) => bot.leave(user).await,
+        ("position", _) => bot.position(user).await,
+        ("length", _) => bot.length().await,
         // Mod commands
-        "!next" => mod_command!(is_mod, user, { bot.next().await }),
-        "!list" => mod_command!(is_mod, user, { bot.list().await }),
-        "!clear" => mod_command!(is_mod, user, { bot.clear().await }),
-        "!open" => mod_command!(is_mod, user, { bot.open().await }),
-        "!close" => mod_command!(is_mod, user, { bot.close().await }),
-        "!reset" => mod_command!(is_mod, user, { bot.reset().await }),
-        "!save" => mod_command!(is_mod, user, { bot.save().await }),
-        command if command.starts_with("!select") => mod_command!(is_mod, user, {
-            match command.split_once(' ') {
+        ("next", _) => mod_command!(is_mod, user, { bot.next().await }),
+        ("list", _) => mod_command!(is_mod, user, { bot.list().await }),
+        ("clear", _) => mod_command!(is_mod, user, { bot.clear().await }),
+        ("open", _) => mod_command!(is_mod, user, { bot.open().await }),
+        ("close", _) => mod_command!(is_mod, user, { bot.close().await }),
+        ("reset", _) => mod_command!(is_mod, user, { bot.reset().await }),
+        ("save", _) => mod_command!(is_mod, user, { bot.save().await }),
+        ("select", name) => mod_command!(is_mod, user, {
+            match name {
+                Some(name) => bot.select(name).await,
                 None => {
                     bot.send_msg("You must provide a name for the queue".into())
                         .await
                 }
-                Some(name) => bot.select(name.1).await,
             }
         }),
-        command if command.starts_with("!create") => mod_command!(is_mod, user, {
-            match command.split_once(' ') {
+        ("create", name) => mod_command!(is_mod, user, {
+            match name {
+                Some(name) => bot.create(name).await,
                 None => {
                     bot.send_msg("You must provide a name for the queue".into())
                         .await
                 }
-                Some(name) => bot.create(name.1).await,
             }
         }),
         // Not a command
