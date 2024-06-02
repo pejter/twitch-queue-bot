@@ -6,6 +6,10 @@
 
 - !join -> Join the queue
   - The queue must be open to be able to join it
+  - You can optionally set your player name by providing it after the space, same as !name
+- !name -> show/set player name (in-game name)
+  - Names are saved so they don't need to be specified during subsequent joins
+  - Names are saved per queue as users may have multiple names in multiple games
 - !leave -> Leave the queue
 - !position -> Display current queue position
 - !length -> Display number of people in queue
@@ -14,6 +18,7 @@
 
 - !next -> Advance the queue by one and displays the new head of the queue
   - This will add the player to the player history which will make them unable to join again until a reset
+  - If the player name is set for that user it will be displayed in brackets next to the username
 - !list -> List the first 5 people in queue
 - !clear -> Clear the queue
 - !open -> Open the current queue for signups

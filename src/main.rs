@@ -35,7 +35,8 @@ async fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> S
         Some((cmd, args)) => (cmd, Some(args)),
     };
     match (cmd, args) {
-        ("join", _) => bot.join(user).await,
+        ("join", name) => bot.join(user, name).await,
+        ("name", name) => bot.name(user, name).await,
         ("leave", _) => bot.leave(user).await,
         ("position", _) => bot.position(user).await,
         ("length", _) => bot.length().await,

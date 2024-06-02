@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 
@@ -16,6 +16,7 @@ pub struct Queue {
     pub is_open: bool,
     list: Vec<String>,
     played: HashSet<String>,
+    pub names: HashMap<String, String>,
 }
 
 impl Queue {
@@ -33,6 +34,7 @@ impl Queue {
             name: name.to_owned(),
             list: Vec::new(),
             played: HashSet::new(),
+            names: HashMap::new(),
         };
         fs::File::create(new.filename()).unwrap();
         new.save();

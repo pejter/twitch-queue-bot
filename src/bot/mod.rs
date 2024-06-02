@@ -113,10 +113,13 @@ impl Bot {
         }
     }
 
-    pub async fn join(&mut self, user: &str) -> SendResult {
+    pub async fn join(&mut self, user: &str, nickname: Option<&str>) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => {
+                if let Some(nickname) = nickname {
+                    queue.names.insert(user.to_owned(), nickname.to_owned());
+                }
                 if queue.is_open {
                     match queue.push(user) {
                         Err(PushError::Played) => {
@@ -160,6 +163,26 @@ impl Bot {
         }
     }
 
+    pub async fn name(&mut self, user: &str, name: Option<&str>) -> SendResult {
+        match self.queue.as_mut() {
+            None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
+            Some(queue) => match name {
+                Some(name) => {
+                    queue.names.insert(user.to_owned(), name.to_owned());
+                    self.send_msg(format!("@{user}: Player name changed to '{name}'"))
+                        .await
+                }
+                None => match queue.names.get(user) {
+                    None => self.send_msg(format!("@{user}: Player name not set")).await,
+                    Some(name) => {
+                        let msg = format!("@{user}: Current player name is '{name}'");
+                        self.send_msg(msg).await
+                    }
+                },
+            },
+        }
+    }
+
     pub async fn reset(&mut self) -> SendResult {
         match self.queue.as_mut() {
             None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
@@ -176,7 +199,10 @@ impl Bot {
             Some(queue) => match queue.shift() {
                 None => self.send_msg(messages::QUEUE_EMPTY.into()).await,
                 Some(user) => {
-                    let next_msg = format!("@{user} is next!");
+                    let next_msg = match queue.names.get(&user) {
+                        None => format!("@{user} is next!"),
+                        Some(name) => format!("@{user} ({name}) is next!"),
+                    };
                     match queue.first() {
                         None => {
                             self.send_msg(format!("{next_msg} That's the last one."))
