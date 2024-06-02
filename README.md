@@ -2,6 +2,8 @@
 
 ## Quickstart
 
+Note: All commands are case insensitive.
+
 ### User commands
 
 - !join -> Join the queue

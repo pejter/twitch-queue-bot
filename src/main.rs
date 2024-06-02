@@ -34,7 +34,7 @@ async fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> S
         None => (msg, None),
         Some((cmd, args)) => (cmd, Some(args)),
     };
-    match (cmd, args) {
+    match (cmd.to_lowercase().as_str(), args) {
         ("join", name) => bot.join(user, name).await,
         ("name", name) => bot.name(user, name).await,
         ("leave", _) => bot.leave(user).await,
