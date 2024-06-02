@@ -87,8 +87,8 @@ impl Bot {
         match self.queue.as_mut() {
             None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.open() {
-                Err(_) => Ok(self.send_msg(messages::QUEUE_OPEN_ERROR.into()).await?),
-                Ok(_) => Ok(self.send_msg(messages::QUEUE_OPEN.into()).await?),
+                Err(()) => Ok(self.send_msg(messages::QUEUE_OPEN_ERROR.into()).await?),
+                Ok(()) => Ok(self.send_msg(messages::QUEUE_OPEN.into()).await?),
             },
         }
     }
@@ -97,8 +97,8 @@ impl Bot {
         match self.queue.as_mut() {
             None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.close() {
-                Err(_) => Ok(self.send_msg(messages::QUEUE_CLOSE_ERROR.into()).await?),
-                Ok(_) => Ok(self.send_msg(messages::QUEUE_CLOSE.into()).await?),
+                Err(()) => Ok(self.send_msg(messages::QUEUE_CLOSE_ERROR.into()).await?),
+                Ok(()) => Ok(self.send_msg(messages::QUEUE_CLOSE.into()).await?),
             },
         }
     }
@@ -154,11 +154,11 @@ impl Bot {
         match self.queue.as_mut() {
             None => Ok(self.send_msg(messages::QUEUE_NOT_LOADED.into()).await?),
             Some(queue) => match queue.remove(user) {
-                Ok(_) => {
+                Ok(()) => {
                     self.send_msg(format!("@{user}: You've been removed from the queue"))
                         .await
                 }
-                Err(_) => self.send_msg(format!("@{user}: You were not queued")).await,
+                Err(()) => self.send_msg(format!("@{user}: You were not queued")).await,
             },
         }
     }

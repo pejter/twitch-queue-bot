@@ -75,14 +75,14 @@ impl Client {
         info!("Creating twitch chat client");
         let closed = Arc::new(RwLock::new(false));
         let creds = StaticLoginCredentials::new(
-            config.bot_username.to_owned(),
-            Some(config.oauth_token.to_owned()),
+            config.bot_username.clone(),
+            Some(config.oauth_token.clone()),
         );
         let irc_config = ClientConfig::new_simple(creds);
         let (reader, client) = TwitchIRCClient::<Transport, _>::new(irc_config);
 
         client
-            .join(config.channel_name.to_owned())
+            .join(config.channel_name.clone())
             .expect("Couldn't join channel");
 
         debug!("Creating chat client");
@@ -131,7 +131,7 @@ impl Client {
     #[tracing::instrument(skip(self))]
     pub async fn send_msg(&self, msg: String) -> SendResult {
         info!("< {msg}");
-        let channel = self.config.channel_name.to_owned();
+        let channel = self.config.channel_name.clone();
         match &self.client {
             None => Err(SendError::ClientClosed),
             Some(client) => Ok(client.say(channel, msg).await?),
