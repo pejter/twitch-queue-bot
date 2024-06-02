@@ -1,9 +1,12 @@
-use std::{sync::Arc, time::Duration};
-
-use tokio::{
-    sync::{mpsc::UnboundedReceiver, RwLock},
-    time::timeout,
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
+
+use tokio::{sync::mpsc::UnboundedReceiver, time::timeout};
 use tracing::{debug, info};
 use twitch_irc::{
     login::StaticLoginCredentials, message::ServerMessage, ClientConfig, Error, SecureWSTransport,
@@ -67,13 +70,13 @@ pub struct Client {
     config: Config,
     reader: Reader,
     client: Option<TwitchIRCClient<Transport, Credentials>>,
-    pub closed: Arc<RwLock<bool>>,
+    pub closed: Arc<AtomicBool>,
 }
 
 impl Client {
     pub fn new(config: Config) -> Self {
         info!("Creating twitch chat client");
-        let closed = Arc::new(RwLock::new(false));
+        let closed = Arc::new(AtomicBool::new(false));
         let creds = StaticLoginCredentials::new(
             config.bot_username.clone(),
             Some(config.oauth_token.clone()),
@@ -96,7 +99,7 @@ impl Client {
 
     pub async fn recv_msg(&mut self) -> Option<Message> {
         loop {
-            if *self.closed.read().await && self.client.is_some() {
+            if self.closed.load(Ordering::Relaxed) && self.client.is_some() {
                 debug!("Chat closed, dropping client");
                 self.client = None;
             }

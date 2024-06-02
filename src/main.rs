@@ -1,6 +1,8 @@
 mod bot;
 mod config;
 
+use std::sync::atomic::Ordering;
+
 use bot::{Bot, Config, Message, SendResult};
 
 use tokio::signal;
@@ -104,7 +106,7 @@ async fn main() {
         match signal::ctrl_c().await {
             Ok(()) => {
                 info!("Received Ctrl-C, exiting...");
-                *closed.write().await = true;
+                closed.store(true, Ordering::Relaxed);
                 info!("Chat closed");
             }
             Err(err) => {
