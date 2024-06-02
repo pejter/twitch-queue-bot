@@ -24,10 +24,13 @@ macro_rules! mod_command {
 const CMD_PREFIX: char = '!';
 
 #[tracing::instrument(skip(bot))]
-async fn handle_command(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendResult {
-    info!("{user}: {msg}");
+async fn handle_message(bot: &mut Bot, is_mod: bool, user: &str, msg: &str) -> SendResult {
+    info!("Handling message");
     let msg = match msg.strip_prefix(CMD_PREFIX) {
-        None => return Ok(()),
+        None => {
+            debug!("Not a command, returning");
+            return Ok(());
+        }
         Some(msg) => msg.trim_end(),
     };
     let (cmd, args) = match msg.split_once(' ') {
@@ -123,7 +126,7 @@ async fn main() {
             }
             Some(msg) => match msg {
                 Message::UserText(is_mod, user, text) => {
-                    if let Err(e) = handle_command(&mut bot, is_mod, &user, &text).await {
+                    if let Err(e) = handle_message(&mut bot, is_mod, &user, &text).await {
                         warn!("Couldn't send message: {e}");
                     };
                 }

@@ -130,7 +130,7 @@ impl Client {
 
     #[tracing::instrument(skip(self))]
     pub async fn send_msg(&self, msg: String) -> SendResult {
-        info!("< {msg}");
+        info!("Sending");
         let channel = self.config.channel_name.clone();
         match &self.client {
             None => Err(SendError::ClientClosed),
