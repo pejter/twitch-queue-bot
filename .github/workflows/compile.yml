@@ -27,7 +27,7 @@ jobs:
           args: --release
 
       - name: Archive binaries
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.os }}
           path: target/release/
